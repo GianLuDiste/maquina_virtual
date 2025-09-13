@@ -1,57 +1,34 @@
 #include <stdio.h>
 #include <stdlib.h>
-
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 
-#define TAMANIOMEMORIA 16385
+#define TAMANIOMEMORIA 16384
 #define TAMANIOREGISTROS 32
 
 #define TAMANIOREG 4
+#define IP 3
 #define CS 26
 #define DS 27
+#define NUM_SEG 8
+
+typedef struct {
+    int16_t base;   // Dirección base del segmento
+    int16_t tamanio;   // Tamaño del segmento
+} Segmento;
 
 int32_t BigIndianLittleIndian32(uint32_t valor);
 int16_t BigIndianLittleIndian16(uint16_t valor);
-int32_t LeerMuchosBytes(int cantBytes, FILE * f);
+void IniciarMaquinaVirtual(int8_t registros[], int8_t memoria[], Segmento tabla_seg[]);
 
 int main()
 {
-    char caracter; //1 byte
-    FILE * f;
-
-    int8_t id[6];
-
-    int8_t ver;
-
-    int16_t tamanio;
+    int32_t registros[TAMANIOREGISTROS];
 
     int8_t memoria[TAMANIOMEMORIA];
 
-    int8_t registros[TAMANIOREGISTROS];
+    Segmento tabla_seg[NUM_SEG];
 
-    int8_t num1;
-
-    int32_t num2;
-
-    num1=-23;
-
-    printf("%d\n", num1);
-
-    num2=num1;
-
-    printf("%d\n", num2);
-
-    f=fopen("sample.vmx", "rb");
-
-
-
-    //IniciarMaquinaVirtual(f, id, &ver, &tamanio);
-
-    //LeerCodigo(f, 3);
-
-    fclose(f);
+    IniciarMaquinaVirtual(registros, memoria, tabla_seg);
 
     return 0;
 }
@@ -66,82 +43,59 @@ uint32_t BigEndianLittleEndian32(int32_t valor){
                     ((valor<<8)&0xff0000) | // Mover byte 1 a byte 2
                     ((valor>>8)&0xff00) | // Mover byte 2 a byte 1
                     ((valor<<24)&0xff000000); // Mover byte 0 a byte 3
-
     return valor;
 }
 
-void IniciarMaquinaVirtual(FILE * f, int8_t id[], int8_t * ver, int16_t * tamanio, int8_t registros[], int8_t memoria[]){
+void IniciarMaquinaVirtual(int8_t registros[], int8_t memoria[], Segmento tabla_seg[]){
+
+    FILE * f;
+
+    int8_t id[6];
+
+    int8_t ver;
+
+    int16_t tamanio;
+
+    f=fopen("sample.vmx", "rb");
 
     fread(id, 5, 1, f); //Leer identificador
 
-    fread(ver, sizeof(uint8_t), 1, f); //Leer Version
+    if(strcmp(id, "VMX25")!=0){
+        perror("ERROR: Mal identificador");
+    }else{
+        fread(&ver, sizeof(uint8_t), 1, f); //Leer Version
 
-    fread(tamanio, 2, 1, f); //Leer Tamaño
+        if(ver!=1){
+            perror("ERROR: Version erronea");
+        }else{
+            fread(&tamanio, 2, 1, f); //Leer Tamaño
 
-    Guardar16ARegistro(registros, 0, CS); //Ponemos en 0 el valor de inicio del Code Segment
+            tamanio=BigEndianLittleEndian16(tamanio); //Pasar Tamaño a LittleEndian
 
-    Guardar16ARegistro(registros, tamanio, DS); //Ponemos en tamanio el valor de inicio del Data Segment
+            //Cada vez que vayamos a usar un valor de un registro hay que pasarlo a LittleEndian
 
-    *tamanio=BigEndianLittleEndian16(*tamanio); //Pasar Tamaño a LittleEndian
+            registros[CS]=0; //Ponemos en 0 el valor de inicio del Code Segment
 
-    //Hay que hacerlo así porque la computadora funciona en Little-Indian, por lo tanto lee los binarios al revés.
+            registros[DS]=tamanio; //Ponemos en tamanio el valor de inicio del Data Segment
 
-    fread(memoria, 1, tamanio, f); //Lectura de la Memoria
+            //Hay que hacerlo así porque la computadora funciona en Little-Indian, por lo tanto lee los binarios al revés.
 
+            fread(memoria, 1, tamanio, f); //Lectura del Archivo en la Memoria
 
+            //-- Inicializar tabla de segmentos ---
 
-    printf("Identificador: %s\n", id);
+            tabla_seg[0].base=0;
+            tabla_seg[0].tamanio=tamanio;
 
-    printf("Version: %d\n", *ver);
+            tabla_seg[1].base=tamanio;
+            tabla_seg[1].tamanio=TAMANIOMEMORIA-tamanio;
 
-    printf("%d", *tamanio);
-}
+            //-------------------------------------
 
-void Guardar16ARegistro(uint8_t registros[], uint16_t dato, uint16_t posicion){
-
-    uint8_t aux;
-
-    posicion=posicion*TAMANIOREG;
-
-    aux=dato;
-
-    aux=aux>>8;
-
-    registros[posicion+3]=dato | 0x000000ff;
-
-    registros[posicion+2]=dato | 0x0000ff00;
-
-    registros[posicion+1]=0 | 0x00ff0000;
-
-    registros[posicion]=0 | 0xff000000;
-}
-
-//Cada vez que vayamos a usar un valor de un registro hay que pasarlo a LittleEndian
-
-void ObtenerValorRegistro(uint8_t registros[], uint16_t posicion, uint8_t valor[]){
-
-    valor=registros[registros[DS*4]+posicion];
-
-}
-
-void LeerCodigo(FILE * f, uint16_t tamanio, uint8_t memoria[], uint8_t registros[]){
-
-    //fread(memoria[], tamanio, 1, f); //Leemos todas las instrucciones
-
-}
-
-/*
-uint32_t LeerMuchosBytes(int cantBytes, FILE * f){
-    uint32_t base=0;
-    int aux;
-
-    for(int i=0; i<cantBytes; i++){
-        base=base << 8;
-        fread(&aux, 1, 1, f);
-        base=base | aux;
+            registros[IP]=registros[CS]; //IP igual al registro CS (Inicialmente 0)
+        }
     }
 
-    return base;
+    fclose(f);
 }
-*/
 
