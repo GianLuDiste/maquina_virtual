@@ -99,3 +99,17 @@ void IniciarMaquinaVirtual(int8_t registros[], int8_t memoria[], Segmento tabla_
     fclose(f);
 }
 
+int32_t LeerOperando(int8_t memoria[], uint32_t &ip, uint8_t tipoOP){
+
+    int32_t valor=0;
+    int i=0;
+
+    for(int i=0; i<tipoOP; i++){
+        valor=valor<<8;
+        valor=valor | memoria[*ip];
+        *ip=*ip+1;
+    }
+
+    return valor;
+}
+
