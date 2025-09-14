@@ -28,17 +28,33 @@
 
 typedef struct
 {
-    int16_t base;    // Direcci�n base del segmento
-    int16_t tamanio; // Tama�o del segmento
+    int16_t base;    // Direccion base del segmento
+    int16_t tamanio; // Tamanio del segmento
 } Segmento;
 
-uint32_t BigEndianLittleEndian32(uint32_t valor);
+void printBits(uint8_t valor);
+
+void printBits16(uint16_t valor);
+
+void printBits32(uint32_t valor);
 
 uint16_t BigEndianLittleEndian16(uint16_t valor);
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
+uint32_t BigEndianLittleEndian32(uint32_t valor);
+
+int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento);
+
+int32_t LeerPuntero(int32_t puntero, int16_t * codSegmento, int16_t * desplazamiento);
 
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP);
+
+int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]);
+
+int32_t LeerMemoria(int8_t memoria[], int32_t base);
+
+void GuardarEnMemoria(int8_t memoria[], int32_t base, int32_t valor);
+
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
@@ -46,13 +62,7 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
 
 void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
-int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[]); // arreglar
-
-uint16_t traducirLogicaFisica(uint16_t basesi, uint16_t offset, Segmento tabla_seg[]);
-
-void decodificarMemoria(uint32_t valor, uint8_t *codReg, uint16_t *offset);
-
-void mov(int8_t memoria[], int32_t registros[], uint8_t tipo_op2, uint8_t tipo_op1);
+void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
 int main()
 {
@@ -64,53 +74,12 @@ int main()
 
     IniciarMaquinaVirtual(registros, memoria, tabla_seg);
 
-    leerInstruccion(memoria, registros, tabla_seg);
+    ejecutarPrograma(memoria, registros, tabla_seg);
 
     return 0;
 }
 
-void printBits(uint8_t valor)
-{
-    for (int i = 7; i >= 0; i--)
-    {
-        // desplazamos i posiciones y sacamos el bit
-        uint8_t bit = (valor >> i) & 1;
-        printf("%u", bit);
-    }
-    printf("\n");
-}
-
-void printBits16(uint16_t valor)
-{
-    for (int i = 15; i >= 0; i--)
-    {
-        // desplazamos i posiciones y sacamos el bit
-        uint16_t bit = (valor >> i) & 1;
-        printf("%u", bit);
-
-        if (i % 8 == 0 && i != 0)
-        {
-            printf(" ");
-        }
-    }
-    printf("\n");
-}
-
-void printBits32(uint32_t valor)
-{
-    for (int i = 31; i >= 0; i--)
-    {
-        uint32_t bit = (valor >> i) & 1;
-        printf("%u", bit);
-
-        // opcional: espacio cada 8 bits (un byte)
-        if (i % 8 == 0 && i != 0)
-        {
-            printf(" ");
-        }
-    }
-    printf("\n");
-}
+//-------- PRINTS DE BITS ----------------------
 
 void printBits(uint8_t valor)
 {
@@ -154,6 +123,10 @@ void printBits32(uint32_t valor)
     }
     printf("\n");
 }
+
+//------------------------------------------------------
+
+//------- Big Endian a LittleEndian --------------------
 
 uint16_t BigEndianLittleEndian16(uint16_t valor)
 {
@@ -169,6 +142,97 @@ uint32_t BigEndianLittleEndian32(uint32_t valor)
             ((valor << 24) & 0xff000000); // Mover byte 0 a byte 3
     return valor;
 }
+
+//------------------------------------------------------
+
+//-------- FUNCIONES DE PUNTEROS --------------------------
+
+int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento){
+    int32_t puntero=codSegmento;
+    puntero=puntero<<16;
+    puntero=puntero | desplazamiento;
+    return puntero;
+}
+
+int32_t LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento){
+    *codSegmento=(puntero & 0xFFFF0000)>>16;
+    *desplazamiento=(puntero & 0xFFFF);
+}
+
+//------------- FUNCIONES DE OPERANDOS ------------------
+
+int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
+{
+
+    int32_t valor = 0;
+
+    for (int i = 0; i < tipoOP; i++)
+    {
+        valor = valor << 8;
+        valor = valor | memoria[*ip];
+        *ip = *ip + 1;
+    }
+    return valor;
+}
+
+//---------------------------------------------------------
+
+//--------------- FUNCIONES DE MEMORIA -------------------
+
+int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]) //Retorna la posicion de memoria donde tiene que guardar o leer
+{
+    int8_t codRegistro = (valor & 0x00FF0000) >> 16;
+    int16_t desplazamientoOperando = (valor & 0x0000FFFF);
+
+    registros[DS]=0x00010000;
+
+    int16_t codSegmento;
+    int16_t desplazamientoPuntero;
+    int32_t puntero = registros[codRegistro]; //Chequear que el registro funcione antes
+
+    LeerPuntero(puntero, &codSegmento, &desplazamientoPuntero);
+
+    int32_t posicion = tabla_seg[codSegmento].base+(desplazamientoPuntero+desplazamientoOperando)*TAMANIOREG;
+
+    if(posicion>TAMANIOMEMORIA || posicion<0){
+        printf("ERROR: Intento de Acceso a memoria invalido\n");
+        posicion=-1;
+    }
+
+    return posicion;
+}
+
+int32_t LeerMemoria(int8_t memoria[], int32_t base){ //Se "para" en la posicion de memoria "base" y lee/concatena los 4 bytes siguientes
+    int32_t aux=0;
+    int i;
+
+    if(base+4<TAMANIOMEMORIA){
+        for(i=0; i<4; i++){
+            aux=aux<<8;
+            aux=aux|memoria[base+i];
+        }
+    }else{
+        printf("ERROR: Lectura de memoria");
+        aux=0; //Probablemente esté mal ya que 0 es un valor válido que puede tomar aux
+    }
+
+    return aux;
+}
+
+void GuardarEnMemoria(int8_t memoria[], int32_t base, int32_t valor){ //Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
+
+    if(base+4<TAMANIOMEMORIA){
+        memoria[base]=(valor & 0xFF000000) >> 24;
+        memoria[base+1]=(valor & 0x00FF0000) >> 16;
+        memoria[base+2]=(valor & 0x0000FF00) >> 8;
+        memoria[base+3]=(valor & 0x000000FF);
+
+    }else{
+        printf("ERROR: Guardado en memoria");
+    }
+}
+
+//------------------ LOOP DE EJECUCION ---------------------------------------
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[])
 { // cambie en registro int8_t por int32_t
@@ -205,9 +269,9 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             // Cada vez que vayamos a usar un valor de un registro hay que pasarlo a LittleEndian
 
-            registros[CS] = 0; // Ponemos en 0 el valor de inicio del Code Segment
+            registros[CS] = CrearPuntero(0, 0); // Ponemos en 0 el valor de inicio del Code Segment
 
-            registros[DS] = tamanio; // Ponemos en tamanio el valor de inicio del Data Segment
+            registros[DS] = CrearPuntero(1, 0); // Ponemos en tamanio el valor de inicio del Data Segment
 
             // Hay que hacerlo as� porque la computadora funciona en Little-Indian, por lo tanto lee los binarios al rev�s.
 
@@ -229,22 +293,15 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
     fclose(f);
 }
 
-int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
+void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
 {
-
-    int32_t valor = 0;
-    int i = 0;
-
-    for (int i = 0; i < tipoOP; i++)
+    while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
-        valor = valor << 8;
-        valor = valor | memoria[*ip];
-        *ip = *ip + 1;
+        leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
     }
-    return valor;
 }
 
-void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) //Lee la siguiente instruccion separando el código de instrucción de sus operadores
 {
     uint32_t ip = registros[IP];
     uint8_t byte_de_control = memoria[ip++];
@@ -264,16 +321,16 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
 
     registros[OPC] = byte_de_control & 0x1F;
 
-    registros[OP1] = registros[OP1] | LeerOperando(memoria, &ip, tipo_opA);
-
     registros[OP2] = registros[OP2] | LeerOperando(memoria, &ip, tipo_opB);
+
+    registros[OP1] = registros[OP1] | LeerOperando(memoria, &ip, tipo_opA);
 
     registros[IP] = ip;
 
     ejecutarInstruccion(memoria, registros, tabla_seg);
 }
 
-void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) //Busca y ejecuta la función respectiva al código de la función
 {
 
     uint8_t tipo1 = (registros[OP1] & 0xFF000000) >> 24;
@@ -287,7 +344,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         switch (registros[OPC])
         {
         case 0x10: // MOV
-            mov(memoria, registros, tipo2, tipo1);
+            mov(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x11: // ADD
             break;
@@ -349,96 +406,47 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
     }
 }
 
-int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[])
+//---------------------------------------------------------------------------------------
+
+void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
+    int16_t dir_fis1, dir_fis2;
 
-    // Doy por hecho que valor viene en LittleEndian
-    int8_t codRegistro = (valor & 0x00FF0000) >> 16;
-    int16_t desplazamiento = (valor & 0xFFFF0000) >> 16;
-    int32_t posicion = 0;
-    int32_t resultado;
-
-    if (codRegistro > 0 && codRegistro < TAMANIOREGISTROS)
+    switch (tipo_op1)
     {
-        posicion = registros[codRegistro];
-        posicion += desplazamiento * TAMANIOREG;
-
-        if (posicion < TAMANIOMEMORIA)
+    case 1:
+        switch (tipo_op2)
         {
-            resultado = posicion;
-        }
-        else
-        {
-            resultado = -1;
-        }
-    }
-    else
-        resultado = -1;
-
-    return resultado;
-}
-
-void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
-{
-    while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
-    {
-        leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
-    }
-}
-
-void decodificarMemoria(uint32_t valor, uint8_t *codReg, uint16_t *offset)
-{
-    *codReg = (valor >> 16) & 0x1F; // 5 bits de c�digo de registro
-    *offset = valor & 0xFFFF;       // 16 bits de desplazamiento
-}
-
-void mov(int8_t memoria[], int32_t registros[], uint8_t tipo_op2, uint8_t tipo_op1)
-{ // cambiar como llegar a la memoria fisica
-    int32_t valor1, valor2;
-    int8_t codreg1, codreg2;
-    int16_t offset1, offset2, dir_fis1, dir_fis2;
-
-    valor1 = registros[OP1] & 0x00FFFFFF;
-    valor2 = registros[OP2] & 0x00FFFFFF;
-    switch (tipo_op2)
-    {
-    case 0x01:
-        switch (tipo_op1)
-        {
-        case 0x01: // reg <- reg
-            registros[valor2] = registros[valor1];
+        case 1: // reg <- reg
+            registros[valor1] = registros[valor2];
             break;
-        case 0x02: // reg <- inmediato
-            registros[valor2] = valor1;
+        case 2: // reg <- inmediato
+            registros[valor1] = valor2;
             break;
-        case 0x03: // reg <- memoria
-            decodificarMemoria(valor1, &codreg1, &offset1);
-            dir_fis1 = ProcesarOPMemoria(valor1, registros);
-            registros[valor2] = memoria[dir_fis1];
+        case 3: // reg <- memoria
+            dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+            registros[valor1] = LeerMemoria(memoria, dir_fis2);
             break;
         default:
             printf("Error \n");
         }
         break;
-    case 0x03:
-        switch (tipo_op1)
+    case 3:
+        dir_fis1=ProcesarOPMemoria(valor1, registros, tabla_seg);
+
+        //printBits32(dir_fis1);
+
+        switch (tipo_op2)
         {
-        case 0x01: // memoria <- registro
-            decodificarMemoria(valor2, &codreg2, &offset2);
-            // dir_fis2 = traducirLogicaFisica(registros[codreg2], offset2);
-            memoria[dir_fis2] = (int8_t)(registros[valor1] & 0xFF);
+        case 1: // memoria <- registro
+            GuardarEnMemoria(memoria, dir_fis1, registros[valor2]);
             break;
-        case 0x02: // memoria <- inmediato
-            decodificarMemoria(valor2, &codreg2, &offset2);
-            // dir_fis2 = traducirLogicaFisica(registros[codreg2], offset2, &tabla_seg);
-            memoria[dir_fis2] = (int8_t)(valor1 & 0xFF);
+        case 2: // memoria <- inmediato
+            GuardarEnMemoria(memoria, dir_fis1, valor2);
             break;
-        case 0x03: // memoria <- memoria
-            decodificarMemoria(valor1, &codreg1, &offset1);
-            decodificarMemoria(valor2, &codreg2, &offset2);
-            // dir_fis1 = traducirLogicaFisica(registros[codreg1], offset1, &tabla_seg);
-            // dir_fis2 = traducirLogicaFisica(registros[codreg2], offset2, &tabla_seg);
-            memoria[dir_fis2] = memoria[dir_fis1];
+        case 3: // memoria <- memoria
+            dir_fis2=ProcesarOPMemoria(valor2, registros, tabla_seg);
+            GuardarEnMemoria(memoria, dir_fis1, LeerMemoria(memoria, dir_fis2));
             break;
         default:
             printf("Error 1\n");
