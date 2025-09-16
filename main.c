@@ -90,6 +90,12 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
+void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
+void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
+void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
 int main()
 {
     int32_t registros[TAMANIOREGISTROS];
@@ -193,8 +199,6 @@ void cambiarCC(int32_t registros[], int32_t valor) {
         registros[CC] = registros[CC] | 0x40000000;
     else if (valor < 0) //1 en N y 0 en Z
         registros[CC] = registros[CC] | 0x80000000;
-
-    printf("CC: "); printBits32(registros[CC]);
 }
 
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
@@ -424,12 +428,15 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         case 0x18: // SAR
             break;
         case 0x19: // AND
+            and(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1A: // OR
+            or(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1B: // XOR
             break;
         case 0x1C: // SWAP
+            swap(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1D: // LDL
             break;
@@ -881,3 +888,154 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
             printf("Error: SHR ninguno o inmediato >> cualquiera");
     }
 }
+
+void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+    int16_t dir_fis1, dir_fis2;
+    int32_t resultado;
+
+    switch (tipo_op1) {
+        case TIPO_REGISTRO:
+            switch (tipo_op2) {
+                case TIPO_REGISTRO: // registro & registro
+                    registros[valor1] = registros[valor1] & registros[valor2];
+                    break;
+                case TIPO_INMEDIATO: // resgitro & inmediato
+                    registros[valor1] = registros[valor1] & valor2;
+                    break;
+                case TIPO_MEMORIA: // registro & memoria
+                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+                    registros[valor1] = registros[valor1] & LeerMemoria(memoria, registros, dir_fis2);
+                    break;
+                default:
+                    printf("Error Registro & Ninugno \n");
+            }
+            cambiarCC(registros, registros[valor1]);
+            break;
+        case TIPO_MEMORIA:
+            dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
+            resultado = LeerMemoria(memoria, registros, dir_fis1);
+            switch (tipo_op2) {
+                case TIPO_REGISTRO: // memoria & registro
+                    resultado = resultado & registros[valor2];
+                    break;
+                case TIPO_INMEDIATO: // memoria & inmediato
+                    resultado = resultado & valor2;
+                    break;
+                case TIPO_MEMORIA: // memoria & memoria
+                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+                    resultado = resultado & LeerMemoria(memoria, registros, dir_fis2);
+                    break;
+                default:
+                    printf("Error Memoria & Ninguno \n");
+            }
+            GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
+            cambiarCC(registros, resultado);
+            break;
+        default:
+            printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
+    }
+}
+
+void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+    int16_t dir_fis1, dir_fis2;
+    int32_t resultado;
+
+    switch (tipo_op1) {
+        case TIPO_REGISTRO:
+            switch (tipo_op2) {
+                case TIPO_REGISTRO: // registro | registro
+                    registros[valor1] = registros[valor1] | registros[valor2];
+                    break;
+                case TIPO_INMEDIATO: // resgitro | inmediato
+                    registros[valor1] = registros[valor1] | valor2;
+                    break;
+                case TIPO_MEMORIA: // registro | memoria
+                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+                    registros[valor1] = registros[valor1] | LeerMemoria(memoria, registros, dir_fis2);
+                    break;
+                default:
+                    printf("Error Registro | Ninugno \n");
+            }
+            cambiarCC(registros, registros[valor1]);
+            break;
+        case TIPO_MEMORIA:
+            dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
+            resultado = LeerMemoria(memoria, registros, dir_fis1);
+            switch (tipo_op2) {
+                case TIPO_REGISTRO: // memoria | registro
+                    resultado = resultado | registros[valor2];
+                    break;
+                case TIPO_INMEDIATO: // memoria | inmediato
+                    resultado = resultado | valor2;
+                    break;
+                case TIPO_MEMORIA: // memoria | memoria
+                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+                    resultado = resultado | LeerMemoria(memoria, registros, dir_fis2);
+                    break;
+                default:
+                    printf("Error Memoria | Ninguno \n");
+            }
+            GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
+            cambiarCC(registros, resultado);
+            break;
+        default:
+            printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
+    }
+}
+
+void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+    int16_t dir_fis1, dir_fis2;
+    int32_t vaux, val_mem1;
+
+    switch (tipo_op1) {
+        case TIPO_REGISTRO:
+            switch (tipo_op2) {
+                case TIPO_REGISTRO:
+                    vaux = registros[valor2];
+                    registros[valor2] = registros[valor1];
+                    registros[valor1] = vaux;
+                    break;
+                case TIPO_MEMORIA:
+                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+                    vaux = LeerMemoria(memoria, registros, dir_fis2);
+                    GuardarEnMemoria(memoria, registros, dir_fis2, registros[valor1]);
+                    registros[valor1] = vaux;
+                    break;
+                default:
+                    printf("Error: Registro SWAP (Inmediato o Ninguno) \n");
+            }
+            break;
+        case TIPO_MEMORIA:
+            dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
+            val_mem1 = LeerMemoria(memoria, registros, dir_fis1);
+            switch (tipo_op2) {
+                case TIPO_REGISTRO:
+                    vaux = registros[valor2];
+                    registros[valor2] = val_mem1;
+                    GuardarEnMemoria(memoria, registros, dir_fis1, vaux);
+                    break;
+                case TIPO_MEMORIA:
+                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+                    vaux = LeerMemoria(memoria, registros, dir_fis2);
+                    GuardarEnMemoria(memoria, registros, dir_fis2, val_mem1);
+                    GuardarEnMemoria(memoria, registros, dir_fis1, vaux);
+                    break;
+                default:
+                    printf("Error: Memoria SWAP (inmediato o ninguno) \n");
+            }
+            break;
+        default:
+            printf("Error: (Inmediato o Ninugno) SWAP cualquiera \n");
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
