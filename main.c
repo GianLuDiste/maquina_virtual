@@ -50,11 +50,11 @@ uint32_t BigEndianLittleEndian32(uint32_t valor);
 
 int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento);
 
-int32_t LeerPuntero(int32_t puntero, int16_t * codSegmento, int16_t * desplazamiento);
+void LeerPuntero(int32_t puntero, int16_t * codSegmento, int16_t * desplazamiento);
 
 int32_t ExtenderSigno24Bits(int32_t valor);
 
-int32_t obtenerValorOperando(uint32_t operando, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]); // nuevo
+int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
 
 void cambiarCC(int32_t registros[], int32_t valor);
 
@@ -190,7 +190,7 @@ int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento){
     return puntero;
 }
 
-int32_t LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento){
+void LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento){
     *codSegmento=(puntero & 0xFFFF0000)>>16;
     *desplazamiento=(puntero & 0xFFFF);
 }
@@ -228,9 +228,8 @@ int32_t ExtenderSigno24Bits(int32_t valor) {
 }
 
 // obtenerValorOperando no se puede usar para el operando en el que hay que guardar los datos
-int32_t obtenerValorOperando(uint32_t operando, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]) {
+int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]) {
     uint16_t dir_fis;
-    uint32_t valor = operando & 0x00FFFFFF;
     uint32_t resultado = 0;
 
     switch (tipo) {
@@ -524,8 +523,6 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error MOV Inmediato o Ninguno a Cualquiera \n");
 }
 
-//----------------------------------------------------------------------------------------
-
 void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
     int16_t dir_fis;
     int32_t resultado = 0;
@@ -548,479 +545,208 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 }
 
 void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
-    int16_t dir_fis1, dir_fis2;
-    int32_t resultado;
+    int16_t dir_fis;
+    int32_t resultado = 0;
 
-    switch (tipo_op1){
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro -= registro
-                    registros[valor1] -= registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // registro -= inmediato
-                    registros[valor1] -= valor2;
-                    break;
-                case TIPO_MEMORIA: // registro -= memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    registros[valor1] -= LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error \n");
-            }
-            cambiarCC(registros, registros[valor1]);
-            break;
-        case TIPO_MEMORIA:
-                dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-                resultado = LeerMemoria(memoria, registros, dir_fis1);
-                switch (tipo_op2) {
-                    case TIPO_REGISTRO: // memoria -= registro
-                        resultado = resultado - registros[valor2];
-                        break;
-                    case TIPO_INMEDIATO: // memoria += inmediato
-                        resultado = resultado - valor2;
-                        break;
-                    case TIPO_MEMORIA: // memoria -= memoria
-                        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                        resultado = resultado - LeerMemoria(memoria, registros, dir_fis2);
-                        break;
-                    default:
-                        printf("Error SUB memoria -= ninguno \n");
-                }
-                GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-                cambiarCC(registros, resultado);
-                break;
-        default:
-            printf("Error: SUB ninguno o inmediato -= cualquiera");
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO) {
+        resultado = registros[valor1] - valor2;
+        registros[valor1] = resultado;
     }
+    else if (tipo_op1 == TIPO_MEMORIA) {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error SUB Inmediato o ninguno -= cualquiera \n");
+    cambiarCC(registros, resultado);
 }
 
 void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
-    int16_t dir_fis1, dir_fis2;
-    int32_t resultado;
+    int16_t dir_fis;
+    int32_t resultado = 0;
 
-    switch (tipo_op1){
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro *= registro
-                    registros[valor1] *= registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // registro *= inmediato
-                    registros[valor1] *= valor2;
-                    break;
-                case TIPO_MEMORIA: // registro *= memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    registros[valor1] *= LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error \n");
-            }
-            cambiarCC(registros, registros[valor1]);
-            break;
-        case TIPO_MEMORIA:
-                dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-                resultado = LeerMemoria(memoria, registros, dir_fis1);
-                switch (tipo_op2) {
-                    case TIPO_REGISTRO: // memoria *= registro
-                        resultado = resultado * registros[valor2];
-                        break;
-                    case TIPO_INMEDIATO: // memoria *= inmediato
-                        resultado = resultado * valor2;
-                        break;
-                    case TIPO_MEMORIA: // memoria *= memoria
-                        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                        resultado = resultado * LeerMemoria(memoria, registros, dir_fis2);
-                        break;
-                    default:
-                        printf("Error MUL memoria *= ninguno \n");
-                }
-                GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-                cambiarCC(registros, resultado);
-                break;
-        default:
-            printf("Error: MUL ninguno o inmediato *= cualquiera");
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO) {
+        resultado = registros[valor1] * valor2;
+        registros[valor1] = resultado;
     }
+    else if (tipo_op1 == TIPO_MEMORIA) {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error MUL Inmediato o ninguno *= cualquiera \n");
+    cambiarCC(registros, resultado);
 }
 
 void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
-    int16_t dir_fis1, dir_fis2;
-    int32_t resultado, aux;
+    int16_t dir_fis;
+    int32_t resultado;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (valor2 == 0) {
         perror("ERROR, division por cero");
         //llamar a STOP
     }
     else {
-        switch (tipo_op1){
-            case TIPO_REGISTRO:
-                switch (tipo_op2) {
-                    case TIPO_REGISTRO: // registro /= registro
-                        registros[valor1] = registros[valor1] / registros[valor2];
-                        registros[AC] = registros[valor1] % registros[valor2];
-                        break;
-                    case TIPO_INMEDIATO: // registro /= inmediato
-                        registros[valor1] = registros[valor1] / valor2;
-                        registros[AC] = registros[valor1] % valor2;
-                        break;
-                    case TIPO_MEMORIA: // registro /= memoria
-                        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                        aux = LeerMemoria(memoria, registros, dir_fis2);
-                        registros[valor1] = registros[valor1] / aux;
-                        registros[AC] = registros[valor1] % aux;
-                        break;
-                    default:
-                        printf("Error \n");
-                }
-                cambiarCC(registros, registros[valor1]);
-                break;
-            case TIPO_MEMORIA:
-                    dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-                    resultado = LeerMemoria(memoria, registros, dir_fis1);
-                    switch (tipo_op2) {
-                        case TIPO_REGISTRO: // memoria /= registro
-                            resultado = resultado / registros[valor2];
-                            registros[AC] = resultado % registros[valor2];
-                            break;
-                        case TIPO_INMEDIATO: // memoria /= inmediato
-                            resultado = resultado / valor2;
-                            registros[AC] = resultado % valor2;
-                            break;
-                        case TIPO_MEMORIA: // memoria /= memoria
-                            dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                            aux = LeerMemoria(memoria, registros, dir_fis2);
-                            resultado = resultado / aux;
-                            registros[AC] = resultado % aux;
-                            break;
-                        default:
-                            printf("Error DIV memoria /= ninguno \n");
-                    }
-                    GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-                    cambiarCC(registros, resultado);
-                    break;
-            default:
-                printf("Error: DIV ninguno o inmediato /= cualquiera");
+        if (tipo_op1 == TIPO_REGISTRO) {
+            valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+            resultado =  valor1 / valor2;
+            registros[AC] = valor1 % valor2;
         }
+        else if (tipo_op1 == TIPO_MEMORIA) {
+            valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+            resultado =  valor1 / valor2;
+            registros[AC] = valor1 % valor2;
+            dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+            GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+        }
+        else
+            printf("Error (Inmediato o ninugno) / cualquiera \n");
+        cambiarCC(registros, resultado);
     }
 }
 
 void cmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
-    int16_t dir_fis1, dir_fis2;
     int32_t resultado;
-
-    switch (tipo_op1){
-        case TIPO_REGISTRO:
-            resultado = registros[valor1];
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro cmp registro
-                    resultado -= registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // registro cmp inmediato
-                    resultado -= valor2;
-                    break;
-                case TIPO_MEMORIA: // registro cmp memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    resultado -= LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error \n");
-            }
-            cambiarCC(registros, resultado);
-            break;
-        case TIPO_INMEDIATO:
-            resultado = valor1;
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // inmediato cmp registro
-                    resultado -= registros[valor1];
-                    break;
-                case TIPO_INMEDIATO: // inmediato cmp inmediato
-                    resultado -= valor2;
-                    break;
-                case TIPO_MEMORIA: // inmediato cmp memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    resultado -= LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error CMP 2");
-            }
-            break;
-        case TIPO_MEMORIA:
-                dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-                resultado = LeerMemoria(memoria, registros, dir_fis1);
-                switch (tipo_op2) {
-                    case TIPO_REGISTRO: // memoria cmp registro
-                        resultado = resultado - registros[valor2];
-                        break;
-                    case TIPO_INMEDIATO: // memoria cmp inmediato
-                        resultado = resultado - valor2;
-                        break;
-                    case TIPO_MEMORIA: // memoria cmp memoria
-                        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                        resultado = resultado - LeerMemoria(memoria, registros, dir_fis2);
-                        break;
-                    default:
-                        printf("Error CMP memoria cmp ninguno \n");
-                }
-                cambiarCC(registros, resultado);
-                break;
-        default:
-            printf("Error: CMP ninguno CMP cualquiera");
-    }
+    valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    resultado = valor1 - valor2;
+    cambiarCC(registros, resultado);
 }
 
 void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
-    int16_t dir_fis1, dir_fis2;
+    int16_t dir_fis;
     int32_t resultado;
 
-    switch (tipo_op1){
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro << registro
-                    registros[valor1] = registros[valor1] << registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // registro << inmediato
-                    registros[valor1] = registros[valor1] << valor2;
-                    break;
-                case TIPO_MEMORIA: // registro << memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    registros[valor1] = registros[valor1] << LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error \n");
-            }
-            cambiarCC(registros, registros[valor1]);
-            break;
-        case TIPO_MEMORIA:
-                dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-                resultado = LeerMemoria(memoria, registros, dir_fis1);
-                switch (tipo_op2) {
-                    case TIPO_REGISTRO: // memoria << registro
-                        resultado = resultado << registros[valor2];
-                        break;
-                    case TIPO_INMEDIATO: // memoria << inmediato
-                        resultado = resultado << valor2;
-                        break;
-                    case TIPO_MEMORIA: // memoria << memoria
-                        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                        resultado = resultado << LeerMemoria(memoria, registros, dir_fis2);
-                        break;
-                    default:
-                        printf("Error SHL memoria << ninguno \n");
-                }
-                GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-                cambiarCC(registros, resultado);
-                break;
-        default:
-            printf("Error: SHL ninguno o inmediato << cualquiera");
-    }
+    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if(tipo_op1==TIPO_REGISTRO){
+        resultado=registros[valor1]<<valor2;
+        registros[valor1] = resultado;
+    }else if(tipo_op1 == TIPO_MEMORIA){
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = valor1 << valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }else
+        printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
+
+    cambiarCC(registros, resultado);
 }
 
 void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
-    int16_t dir_fis1, dir_fis2;
+    int16_t dir_fis;
     int32_t resultado;
 
-    switch (tipo_op1){
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro >> registro
-                    registros[valor1] = registros[valor1] >> registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // registro >> inmediato
-                    registros[valor1] = registros[valor1] >> valor2;
-                    break;
-                case TIPO_MEMORIA: // registro >> memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    registros[valor1] = registros[valor1] >> LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error \n");
-            }
-            cambiarCC(registros, registros[valor1]);
-            break;
-        case TIPO_MEMORIA:
-                dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-                resultado = LeerMemoria(memoria, registros, dir_fis1);
-                switch (tipo_op2) {
-                    case TIPO_REGISTRO: // memoria >> registro
-                        resultado = resultado >> registros[valor2];
-                        break;
-                    case TIPO_INMEDIATO: // memoria >> inmediato
-                        resultado = resultado >> valor2;
-                        break;
-                    case TIPO_MEMORIA: // memoria >> memoria
-                        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                        resultado = resultado >> LeerMemoria(memoria, registros, dir_fis2);
-                        break;
-                    default:
-                        printf("Error SHR memoria >> ninguno \n");
-                }
-                GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-                cambiarCC(registros, resultado);
-                break;
-        default:
-            printf("Error: SHR ninguno o inmediato >> cualquiera");
-    }
+    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if(tipo_op1==TIPO_REGISTRO){
+        resultado=registros[valor1]>>valor2;
+        registros[valor1] = resultado;
+    }else if(tipo_op1 == TIPO_MEMORIA){
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = valor1 >> valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }else
+        printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
+
+    cambiarCC(registros, resultado);
 }
 
 void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
-    int16_t dir_fis1, dir_fis2;
+    int16_t dir_fis;
     int32_t resultado;
 
-    switch (tipo_op1) {
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro & registro
-                    registros[valor1] = registros[valor1] & registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // resgitro & inmediato
-                    registros[valor1] = registros[valor1] & valor2;
-                    break;
-                case TIPO_MEMORIA: // registro & memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    registros[valor1] = registros[valor1] & LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error Registro & Ninugno \n");
-            }
-            cambiarCC(registros, registros[valor1]);
-            break;
-        case TIPO_MEMORIA:
-            dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-            resultado = LeerMemoria(memoria, registros, dir_fis1);
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // memoria & registro
-                    resultado = resultado & registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // memoria & inmediato
-                    resultado = resultado & valor2;
-                    break;
-                case TIPO_MEMORIA: // memoria & memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    resultado = resultado & LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error Memoria & Ninguno \n");
-            }
-            GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-            cambiarCC(registros, resultado);
-            break;
-        default:
-            printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
-    }
+    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if(tipo_op1==TIPO_REGISTRO){
+        resultado=registros[valor1]&valor2;
+        registros[valor1] = resultado;
+    }else if(tipo_op1 == TIPO_MEMORIA){
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = valor1 & valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }else
+        printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
+
+    cambiarCC(registros, resultado);
 }
 
 void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
-    int16_t dir_fis1, dir_fis2;
+    int16_t dir_fis;
     int32_t resultado;
 
-    switch (tipo_op1) {
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // registro | registro
-                    registros[valor1] = registros[valor1] | registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // resgitro | inmediato
-                    registros[valor1] = registros[valor1] | valor2;
-                    break;
-                case TIPO_MEMORIA: // registro | memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    registros[valor1] = registros[valor1] | LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error Registro | Ninugno \n");
-            }
-            cambiarCC(registros, registros[valor1]);
-            break;
-        case TIPO_MEMORIA:
-            dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-            resultado = LeerMemoria(memoria, registros, dir_fis1);
-            switch (tipo_op2) {
-                case TIPO_REGISTRO: // memoria | registro
-                    resultado = resultado | registros[valor2];
-                    break;
-                case TIPO_INMEDIATO: // memoria | inmediato
-                    resultado = resultado | valor2;
-                    break;
-                case TIPO_MEMORIA: // memoria | memoria
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    resultado = resultado | LeerMemoria(memoria, registros, dir_fis2);
-                    break;
-                default:
-                    printf("Error Memoria | Ninguno \n");
-            }
-            GuardarEnMemoria(memoria, registros, dir_fis1, resultado);
-            cambiarCC(registros, resultado);
-            break;
-        default:
-            printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
-    }
+    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if(tipo_op1==TIPO_REGISTRO){
+        resultado=registros[valor1]|valor2;
+        registros[valor1] = resultado;
+    }else if(tipo_op1 == TIPO_MEMORIA){
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = valor1 | valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }else
+        printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
+
+    cambiarCC(registros, resultado);
 }
 
 void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
     int16_t dir_fis;
     int32_t resultado;
-    int i;
-    for (i = 31; i > 0; i--) {
 
-    }
+    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO) {
-
+        resultado = registros[valor1]^valor2;
         registros[valor1] = resultado;
     }
     else if (tipo_op1 == TIPO_MEMORIA) {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        GuardarEnMemoria(memoria, registros, dir_fis, valor2);
+        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = valor1 ^ valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
     }
     else
-        printf("Error XOR inmediato o ninugno xor cualquiera \n");
+        printf("Error inmediato o ninguno ^ cualquiera \n");
+
+    cambiarCC(registros, resultado);
 }
 
 void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
     int16_t dir_fis1, dir_fis2;
-    int32_t vaux, val_mem1;
+    int32_t vaux;
 
-    switch (tipo_op1) {
-        case TIPO_REGISTRO:
-            switch (tipo_op2) {
-                case TIPO_REGISTRO:
-                    vaux = registros[valor2];
-                    registros[valor2] = registros[valor1];
-                    registros[valor1] = vaux;
-                    break;
-                case TIPO_MEMORIA:
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    vaux = LeerMemoria(memoria, registros, dir_fis2);
-                    GuardarEnMemoria(memoria, registros, dir_fis2, registros[valor1]);
-                    registros[valor1] = vaux;
-                    break;
-                default:
-                    printf("Error: Registro SWAP (Inmediato o Ninguno) \n");
-            }
-            break;
-        case TIPO_MEMORIA:
-            dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-            val_mem1 = LeerMemoria(memoria, registros, dir_fis1);
-            switch (tipo_op2) {
-                case TIPO_REGISTRO:
-                    vaux = registros[valor2];
-                    registros[valor2] = val_mem1;
-                    GuardarEnMemoria(memoria, registros, dir_fis1, vaux);
-                    break;
-                case TIPO_MEMORIA:
-                    dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-                    vaux = LeerMemoria(memoria, registros, dir_fis2);
-                    GuardarEnMemoria(memoria, registros, dir_fis2, val_mem1);
-                    GuardarEnMemoria(memoria, registros, dir_fis1, vaux);
-                    break;
-                default:
-                    printf("Error: Memoria SWAP (inmediato o ninguno) \n");
-            }
-            break;
-        default:
-            printf("Error: (Inmediato o Ninugno) SWAP cualquiera \n");
+    if (tipo_op1 == TIPO_REGISTRO) {
+        vaux=registros[valor2];
+        registros[valor2]=registros[valor1];
+        registros[valor1]=vaux;
     }
+    else if (tipo_op1 == TIPO_MEMORIA) {
+        dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
 
+        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+        GuardarEnMemoria(memoria, registros, dir_fis1, valor2);
+        GuardarEnMemoria(memoria, registros, dir_fis2, valor1);
+    }
+    else
+        printf("Error SWAP \n");
 }
 
+//---------------------------------------------------------------------------------------
 
 
 
