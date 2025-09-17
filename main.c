@@ -116,6 +116,24 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
+void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
+void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor);
+
+void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void jz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void jp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void jene(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void jnz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void jnp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
 int main()
 {
     srand(time(NULL));
@@ -464,6 +482,8 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
         printBits32(registros[EAX]);
         printf("EBX: ");
         printBits32(registros[EBX]);
+        printf("CC: ");
+        printBits32(registros[CC]);
         // printf("ECX: "); printBits32(registros[ECX]);
         // printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
         // printf("CC: "); printBits32(registros[CC]);
@@ -571,18 +591,25 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         case 0x00: // SYS
             break;
         case 0x01: // JMP
+            jmp(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x02: // JZ
+            jz(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x03: // JP
+            jp(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x04: // JN
+            jene(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x05: // JNZ
+            jnz(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x06: // JNP
+            jnp(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x07: // JNN
+            jnn(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x08: // NOT
             break;
@@ -656,6 +683,7 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error SUB Inmediato o ninguno -= cualquiera \n");
+
     cambiarCC(registros, resultado);
 }
 
@@ -963,6 +991,59 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
+}
+
+//Hay que ver la manera de saber el espacio de la instrucción en la memoria[] teniendo el desplazamiento (Algunas instrucciones tienen 1,2 o ningún operando).
+//(Es decir, las instrucciones tienen diferentes tamaños)
+
+void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor){
+
+    if(valor>=0 && valor<tabla_seg[0].tamanio){
+        registros[IP]=valor;
+    }else{
+        printf("ERROR: Se intento acceder afuera del segmento de codigo\n");
+    }
+}
+
+void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+        valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+        Jump(registros, tabla_seg, valor2);
+}
+
+void jz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if(getZ(registros))
+        Jump(registros, tabla_seg, valor2);
+}
+
+void jp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if(getZ(registros)==0 && getN(registros) == 0)
+        Jump(registros, tabla_seg, valor2);
+}
+
+void jene(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if(getN(registros))
+        Jump(registros, tabla_seg, valor2);
+}
+
+void jnz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if(getZ(registros)==0)
+        Jump(registros, tabla_seg, valor2);
+}
+
+void jnp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if(getZ(registros) || getN(registros))
+        Jump(registros, tabla_seg, valor2);
+}
+
+void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if(getN(registros)==0)
+        Jump(registros, tabla_seg, valor2);
 }
 
 //---------------------------------------------------------------------------------------
