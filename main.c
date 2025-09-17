@@ -134,6 +134,8 @@ void jnp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
+void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
 int main()
 {
     srand(time(NULL));
@@ -478,16 +480,13 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
-        printf("EAX: ");
-        printBits32(registros[EAX]);
-        printf("EBX: ");
-        printBits32(registros[EBX]);
-        printf("CC: ");
-        printBits32(registros[CC]);
-        // printf("ECX: "); printBits32(registros[ECX]);
-        // printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
-        // printf("CC: "); printBits32(registros[CC]);
-        printf("\n \n");
+        printf("EAX: "); printBits32(registros[EAX]);
+        printf("EBX: "); printBits32(registros[EBX]);
+        printf("ECX: "); printBits32(registros[ECX]);
+        printf("EDX: "); printBits32(registros[EDX]);
+        printf("CC: "); printBits32(registros[CC]);
+        printf("Memoria [5]: \n"); mostrarMemoria(memoria, registros, tabla_seg, 5);
+        printf("\n \n \n");
     }
 }
 
@@ -612,6 +611,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             jnn(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x08: // NOT
+            not(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x0F: // STOP
             registros[IP] = 0xFFFFFFFF;
@@ -660,6 +660,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error ADD Inmediato o ninguno += cualquiera \n");
+
     cambiarCC(registros, resultado);
 }
 
@@ -707,6 +708,7 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error MUL Inmediato o ninguno *= cualquiera \n");
+
     cambiarCC(registros, resultado);
 }
 
@@ -740,6 +742,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
         }
         else
             printf("Error (Inmediato o ninugno) / cualquiera \n");
+
         cambiarCC(registros, resultado);
     }
 }
@@ -1044,6 +1047,27 @@ void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
     if(getN(registros)==0)
         Jump(registros, tabla_seg, valor2);
+}
+
+void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2) {
+    int i;
+    int16_t dir_fis;
+    uint32_t bit;
+    int32_t resultado = 0;
+
+    if (tipo_op2 != TIPO_INMEDIATO && tipo_op2 != TIPO_NINGUNO) {
+        resultado = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+        resultado = ~resultado;
+        if (tipo_op2 == TIPO_REGISTRO)
+            registros[valor2] = resultado;
+        else {
+            dir_fis = ProcesarOPMemoria(valor2, registros, tabla_seg);
+            GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+        }
+        cambiarCC(registros, resultado);
+    }
+    else
+        printf("Error: NOT aplicado a un inmediato o ninguno \n");
 }
 
 //---------------------------------------------------------------------------------------
