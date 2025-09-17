@@ -479,13 +479,15 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 {
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
+        printf("IP: %d \n", registros[IP]);
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
         printf("EAX: "); printBits32(registros[EAX]);
         printf("EBX: "); printBits32(registros[EBX]);
-        printf("ECX: "); printBits32(registros[ECX]);
-        printf("EDX: "); printBits32(registros[EDX]);
+        //printf("ECX: "); printBits32(registros[ECX]);
+        //printf("EDX: "); printBits32(registros[EDX]);
         printf("CC: "); printBits32(registros[CC]);
-        printf("Memoria [5]: \n"); mostrarMemoria(memoria, registros, tabla_seg, 5);
+        printf("IP: %d \n", registros[IP]);
+        //printf("Memoria [5]: \n"); mostrarMemoria(memoria, registros, tabla_seg, 5);
         printf("\n \n \n");
     }
 }
@@ -1009,13 +1011,13 @@ void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor){
 }
 
 void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
-        valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-        Jump(registros, tabla_seg, valor2);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    Jump(registros, tabla_seg, valor2);
 }
 
 void jz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getZ(registros))
+    if(getZ(registros) == 1 && getN(registros) == 0)
         Jump(registros, tabla_seg, valor2);
 }
 
