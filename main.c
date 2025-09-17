@@ -100,6 +100,10 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
+void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
+void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
 int main()
 {
     int32_t registros[TAMANIOREGISTROS];
@@ -382,9 +386,9 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
         printf("EAX: "); printBits32(registros[EAX]);
         printf("EBX: "); printBits32(registros[EBX]);
-        printf("ECX: "); printBits32(registros[ECX]);
-        printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
-        printf("CC: "); printBits32(registros[CC]);
+        //printf("ECX: "); printBits32(registros[ECX]);
+        //printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
+        //printf("CC: "); printBits32(registros[CC]);
         printf("\n \n");
     }
 }
@@ -470,8 +474,10 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             swap(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1D: // LDL
+            ldl(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1E: // LDH
+            ldh(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1F: // RND
             break;
@@ -744,6 +750,46 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
     }
     else
         printf("Error SWAP \n");
+}
+
+void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+    int16_t dir_fis;
+    int32_t resultado;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO) {
+        registros[valor1] = registros[valor1] & 0xFFFF0000;
+        registros[valor1] = registros[valor1] | valor2;
+    }
+    else if (tipo_op1 == TIPO_MEMORIA) {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0xFFFF0000;
+        resultado = resultado | (valor2 & 0x0000FFFF);
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error (Inmediato o Ninguno) LDL Cualquiera \n");
+}
+
+void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+    int16_t dir_fis;
+    int32_t resultado;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO) {
+        registros[valor1] = registros[valor1] & 0x0000FFFF;
+        registros[valor1] = registros[valor1] | (valor2 << 16);
+    }
+    else if (tipo_op1 == TIPO_MEMORIA) {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0x0000FFFF;
+        resultado = resultado | (valor2 << 16);
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
 }
 
 //---------------------------------------------------------------------------------------
