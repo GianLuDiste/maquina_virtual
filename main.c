@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
 
 #define TAMANIOMEMORIA 16384
 #define TAMANIOREGISTROS 32
@@ -44,6 +45,12 @@ void printBits16(uint16_t valor);
 
 void printBits32(uint32_t valor);
 
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento);
+
+uint8_t getBit(int32_t valor, int8_t n);
+
+int32_t setBit(int32_t valor, int8_t n, int8_t x);
+
 uint16_t BigEndianLittleEndian16(uint16_t valor);
 
 uint32_t BigEndianLittleEndian32(uint32_t valor);
@@ -58,6 +65,10 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
 
 void cambiarCC(int32_t registros[], int32_t valor);
 
+int8_t getN(int32_t registros[]);
+
+int8_t getZ(int32_t registros[]);
+
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP);
 
 int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]);
@@ -67,8 +78,6 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[],int32_t base);
 void GuardarEnMemoria(int8_t memoria[],int32_t registros[],int32_t base, int32_t valor);
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
-
-int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP);
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
@@ -113,6 +122,34 @@ int main()
     ejecutarPrograma(memoria, registros, tabla_seg);
 
     return 0;
+}
+
+//-------- UTILIDADES --------------------------
+
+uint8_t getBit(int32_t valor, int8_t n){ // n = num de bit a retornar (0 a N-1) contando desde el numero menos significativo
+    uint8_t bit;
+    int64_t mascara=2;
+    mascara=pow(mascara, n);
+
+    bit=(valor&mascara)>>n;
+
+    return bit;
+}
+
+int32_t setBit(int32_t valor, int8_t n, int8_t x){ // n = num de bit a setear (0 a N-1) contando desde el numero menos significativo; x=1 o 0 (valor a setear)
+    int64_t mascara=2;
+    mascara=pow(mascara, n);
+
+    if(x==0){
+        valor&= ~(mascara);
+    }else
+        valor|= mascara;
+
+    return valor;
+}
+
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento){
+    printBits32(LeerMemoria(memoria, registros, tabla_seg[1].base+desplazamiento*TAMANIOMEM));
 }
 
 //-------- PRINTS DE BITS ----------------------
@@ -204,6 +241,15 @@ void cambiarCC(int32_t registros[], int32_t valor) {
     else if (valor < 0) //1 en N y 0 en Z
         registros[CC] = registros[CC] | 0x80000000;
 }
+
+int8_t getN(int32_t registros[]){
+    return getBit(registros[CC], 31);
+}
+
+int8_t getZ(int32_t registros[]){
+    return getBit(registros[CC], 30);
+}
+
 
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
 {
@@ -380,12 +426,6 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
-        printf("EAX: "); printBits32(registros[EAX]);
-        printf("EBX: "); printBits32(registros[EBX]);
-        printf("ECX: "); printBits32(registros[ECX]);
-        printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
-        printf("CC: "); printBits32(registros[CC]);
-        printf("\n \n");
     }
 }
 
