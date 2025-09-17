@@ -57,7 +57,7 @@ uint32_t BigEndianLittleEndian32(uint32_t valor);
 
 int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento);
 
-void LeerPuntero(int32_t puntero, int16_t * codSegmento, int16_t * desplazamiento);
+void LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento);
 
 int32_t ExtenderSigno24Bits(int32_t valor);
 
@@ -73,9 +73,9 @@ int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP);
 
 int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]);
 
-int32_t LeerMemoria(int8_t memoria[], int32_t registros[],int32_t base);
+int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base);
 
-void GuardarEnMemoria(int8_t memoria[],int32_t registros[],int32_t base, int32_t valor);
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor);
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
 
@@ -109,6 +109,10 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
+void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
+void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
 int main()
 {
     int32_t registros[TAMANIOREGISTROS];
@@ -126,30 +130,35 @@ int main()
 
 //-------- UTILIDADES --------------------------
 
-uint8_t getBit(int32_t valor, int8_t n){ // n = num de bit a retornar (0 a N-1) contando desde el numero menos significativo
+uint8_t getBit(int32_t valor, int8_t n)
+{ // n = num de bit a retornar (0 a N-1) contando desde el numero menos significativo
     uint8_t bit;
-    int64_t mascara=2;
-    mascara=pow(mascara, n);
+    int64_t mascara = 2;
+    mascara = pow(mascara, n);
 
-    bit=(valor&mascara)>>n;
+    bit = (valor & mascara) >> n;
 
     return bit;
 }
 
-int32_t setBit(int32_t valor, int8_t n, int8_t x){ // n = num de bit a setear (0 a N-1) contando desde el numero menos significativo; x=1 o 0 (valor a setear)
-    int64_t mascara=2;
-    mascara=pow(mascara, n);
+int32_t setBit(int32_t valor, int8_t n, int8_t x)
+{ // n = num de bit a setear (0 a N-1) contando desde el numero menos significativo; x=1 o 0 (valor a setear)
+    int64_t mascara = 2;
+    mascara = pow(mascara, n);
 
-    if(x==0){
-        valor&= ~(mascara);
-    }else
-        valor|= mascara;
+    if (x == 0)
+    {
+        valor &= ~(mascara);
+    }
+    else
+        valor |= mascara;
 
     return valor;
 }
 
-void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento){
-    printBits32(LeerMemoria(memoria, registros, tabla_seg[1].base+desplazamiento*TAMANIOMEM));
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento)
+{
+    printBits32(LeerMemoria(memoria, registros, tabla_seg[1].base + desplazamiento * TAMANIOMEM));
 }
 
 //-------- PRINTS DE BITS ----------------------
@@ -220,36 +229,40 @@ uint32_t BigEndianLittleEndian32(uint32_t valor)
 
 //-------- FUNCIONES DE PUNTEROS --------------------------
 
-int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento){
-    int32_t puntero=codSegmento;
-    puntero=puntero<<16;
-    puntero=puntero | desplazamiento;
+int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento)
+{
+    int32_t puntero = codSegmento;
+    puntero = puntero << 16;
+    puntero = puntero | desplazamiento;
     return puntero;
 }
 
-void LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento){
-    *codSegmento=(puntero & 0xFFFF0000)>>16;
-    *desplazamiento=(puntero & 0xFFFF);
+void LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento)
+{
+    *codSegmento = (puntero & 0xFFFF0000) >> 16;
+    *desplazamiento = (puntero & 0xFFFF);
 }
 
 //------------- FUNCIONES DE OPERANDOS ------------------
 
-void cambiarCC(int32_t registros[], int32_t valor) {
+void cambiarCC(int32_t registros[], int32_t valor)
+{
     registros[CC] = 0;
     if (valor == 0) // 0 en N y 1 en Z
         registros[CC] = registros[CC] | 0x40000000;
-    else if (valor < 0) //1 en N y 0 en Z
+    else if (valor < 0) // 1 en N y 0 en Z
         registros[CC] = registros[CC] | 0x80000000;
 }
 
-int8_t getN(int32_t registros[]){
+int8_t getN(int32_t registros[])
+{
     return getBit(registros[CC], 31);
 }
 
-int8_t getZ(int32_t registros[]){
+int8_t getZ(int32_t registros[])
+{
     return getBit(registros[CC], 30);
 }
-
 
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
 {
@@ -265,32 +278,38 @@ int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
     return valor;
 }
 
-int32_t ExtenderSigno24Bits(int32_t valor) {
-    if (valor & 0x00800000){ // Si el bit 23 está en 1 entonces es un numero negativo.
-        return valor | 0xFF000000;  // Se rellena con 1s
-    } else {
-        return valor & 0x00FFFFFF;  // No hace nada
+int32_t ExtenderSigno24Bits(int32_t valor)
+{
+    if (valor & 0x00800000)
+    {                              // Si el bit 23 está en 1 entonces es un numero negativo.
+        return valor | 0xFF000000; // Se rellena con 1s
+    }
+    else
+    {
+        return valor & 0x00FFFFFF; // No hace nada
     }
 }
 
 // obtenerValorOperando no se puede usar para el operando en el que hay que guardar los datos
-int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]) {
+int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[])
+{
     uint16_t dir_fis;
     uint32_t resultado = 0;
 
-    switch (tipo) {
-        case TIPO_REGISTRO:
-            resultado = registros[valor];
-            break;
-        case TIPO_INMEDIATO:
-            resultado = valor;
-            break;
-        case TIPO_MEMORIA:
-            dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg);
-            resultado = LeerMemoria(memoria, registros, dir_fis);
-            break;
-        default:
-            resultado = 0;
+    switch (tipo)
+    {
+    case TIPO_REGISTRO:
+        resultado = registros[valor];
+        break;
+    case TIPO_INMEDIATO:
+        resultado = valor;
+        break;
+    case TIPO_MEMORIA:
+        dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg);
+        resultado = LeerMemoria(memoria, registros, dir_fis);
+        break;
+    default:
+        resultado = 0;
     }
     return resultado;
 }
@@ -299,63 +318,73 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
 
 //--------------- FUNCIONES DE MEMORIA -------------------
 
-int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]) //Retorna la posicion de memoria donde tiene que guardar o leer
+int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]) // Retorna la posicion de memoria donde tiene que guardar o leer
 {
     int8_t codRegistro = (valor & 0x00FF0000) >> 16;
     int16_t desplazamientoOperando = (valor & 0x0000FFFF);
     int16_t codSegmento;
     int16_t desplazamientoPuntero;
-    int32_t puntero = registros[codRegistro]; //Chequear que el registro funcione antes
+    int32_t puntero = registros[codRegistro]; // Chequear que el registro funcione antes
 
     LeerPuntero(puntero, &codSegmento, &desplazamientoPuntero);
 
-    int32_t posicion = tabla_seg[codSegmento].base+(desplazamientoPuntero+desplazamientoOperando)*TAMANIOREG;
+    int32_t posicion = tabla_seg[codSegmento].base + (desplazamientoPuntero + desplazamientoOperando) * TAMANIOREG;
 
-    if(posicion>TAMANIOMEMORIA || posicion<0){
+    if (posicion > TAMANIOMEMORIA || posicion < 0)
+    {
         printf("ERROR: Intento de Acceso a memoria invalido\n");
-        posicion=-1;
+        posicion = -1;
     }
 
-    registros[LAR]=CrearPuntero(codSegmento, desplazamientoOperando+desplazamientoPuntero); //Se Inicializa el registro LAR
+    registros[LAR] = CrearPuntero(codSegmento, desplazamientoOperando + desplazamientoPuntero); // Se Inicializa el registro LAR
 
-    registros[MAR]=TAMANIOMEM; //Tamanio estándar de la memoria (por ahora)
+    registros[MAR] = TAMANIOMEM; // Tamanio estándar de la memoria (por ahora)
 
-    registros[MAR]=registros[MAR]<<16; //Se guarda la cantidad de bytes de lectura en la parte alta del MAR
+    registros[MAR] = registros[MAR] << 16; // Se guarda la cantidad de bytes de lectura en la parte alta del MAR
 
-    registros[MAR]=registros[MAR]|posicion; //Se guarda la posicion en la parte baja del registro MAR
+    registros[MAR] = registros[MAR] | posicion; // Se guarda la posicion en la parte baja del registro MAR
 
     return posicion;
 }
 
-int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base){ //Se "para" en la posicion de memoria "base" y lee/concatena los 4 bytes siguientes
-    int32_t aux=0;
+int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
+{ // Se "para" en la posicion de memoria "base" y lee/concatena los 4 bytes siguientes
+    int32_t aux = 0;
     int i;
 
-    if(base+4<TAMANIOMEMORIA){
-        for(i=0; i<4; i++){
-            aux=aux<<8;
-            aux=aux|memoria[base+i];
+    if (base + 4 < TAMANIOMEMORIA)
+    {
+        for (i = 0; i < 4; i++)
+        {
+            aux = aux << 8;
+            aux = aux | memoria[base + i];
         }
 
-        registros[MBR]=aux;
-    }else{
+        registros[MBR] = aux;
+    }
+    else
+    {
         printf("ERROR: Lectura de memoria");
-        aux=0; //Probablemente esté mal ya que 0 es un valor válido que puede tomar aux
+        aux = 0; // Probablemente esté mal ya que 0 es un valor válido que puede tomar aux
     }
 
     return aux;
 }
 
-void GuardarEnMemoria(int8_t memoria[], int32_t registros[],int32_t base, int32_t valor){ //Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor)
+{ // Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
 
-    if(base+4<TAMANIOMEMORIA){
-        memoria[base]=(valor & 0xFF000000) >> 24;
-        memoria[base+1]=(valor & 0x00FF0000) >> 16;
-        memoria[base+2]=(valor & 0x0000FF00) >> 8;
-        memoria[base+3]=(valor & 0x000000FF);
+    if (base + 4 < TAMANIOMEMORIA)
+    {
+        memoria[base] = (valor & 0xFF000000) >> 24;
+        memoria[base + 1] = (valor & 0x00FF0000) >> 16;
+        memoria[base + 2] = (valor & 0x0000FF00) >> 8;
+        memoria[base + 3] = (valor & 0x000000FF);
 
-        registros[MBR]=valor;
-    }else{
+        registros[MBR] = valor;
+    }
+    else
+    {
         printf("ERROR: Guardado en memoria");
     }
 }
@@ -377,7 +406,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
     fread(id, 5, 1, f); // Leer identificador
 
-    if (strcmp(id, "VMX25")!=0)
+    if (strcmp(id, "VMX25") != 0)
     {
         perror("ERROR: Mal identificador");
     }
@@ -426,10 +455,18 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
+        printf("EAX: ");
+        printBits32(registros[EAX]);
+        printf("EBX: ");
+        printBits32(registros[EBX]);
+        // printf("ECX: "); printBits32(registros[ECX]);
+        // printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
+        // printf("CC: "); printBits32(registros[CC]);
+        printf("\n \n");
     }
 }
 
-void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) //Lee la siguiente instruccion separando el código de instrucción de sus operadores
+void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
 {
     uint32_t ip = registros[IP];
     uint8_t byte_de_control = memoria[ip++];
@@ -458,7 +495,7 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
     ejecutarInstruccion(memoria, registros, tabla_seg);
 }
 
-void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) //Busca y ejecuta la función respectiva al código de la función
+void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) // Busca y ejecuta la función respectiva al código de la función
 {
     uint8_t tipo1, tipo2;
     int32_t valor1, valor2;
@@ -468,7 +505,8 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
     valor1 = ExtenderSigno24Bits(registros[OP1] & 0x00FFFFFF);
     valor2 = ExtenderSigno24Bits(registros[OP2] & 0x00FFFFFF);
 
-    if ((tipo2 > 0) && (tipo1 > 0)) {
+    if ((tipo2 > 0) && (tipo1 > 0))
+    {
         switch (registros[OPC])
         {
         case 0x10: // MOV
@@ -510,14 +548,17 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             swap(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1D: // LDL
+            ldl(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1E: // LDH
+            ldh(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1F: // RND
             break;
         }
     }
-    else {
+    else
+    {
         switch (registros[OPC])
         {
         case 0x00: // SYS
@@ -539,7 +580,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         case 0x08: // NOT
             break;
         case 0x0F: // STOP
-            registros[IP]=0xFFFFFFFF;
+            registros[IP] = 0xFFFFFFFF;
             printf("\nSTOP: Termino la ejecucion\n");
             break;
         }
@@ -548,14 +589,16 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
 
 //---------------------------------------------------------------------------------------
 
-void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
         registros[valor1] = valor2;
-    else if (tipo_op1 == TIPO_MEMORIA) {
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         GuardarEnMemoria(memoria, registros, dir_fis, valor2);
     }
@@ -563,17 +606,20 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error MOV Inmediato o Ninguno a Cualquiera \n");
 }
 
-void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado = 0;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if (tipo_op1 == TIPO_REGISTRO) {
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
         resultado = registros[valor1] + valor2;
         registros[valor1] = resultado;
     }
-    else if (tipo_op1 == TIPO_MEMORIA) {
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
@@ -581,20 +627,22 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     else
         printf("Error ADD Inmediato o ninguno += cualquiera \n");
     cambiarCC(registros, resultado);
-
 }
 
-void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado = 0;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if (tipo_op1 == TIPO_REGISTRO) {
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
         resultado = registros[valor1] - valor2;
         registros[valor1] = resultado;
     }
-    else if (tipo_op1 == TIPO_MEMORIA) {
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
@@ -604,17 +652,20 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado = 0;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if (tipo_op1 == TIPO_REGISTRO) {
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
         resultado = registros[valor1] * valor2;
         registros[valor1] = resultado;
     }
-    else if (tipo_op1 == TIPO_MEMORIA) {
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
@@ -624,25 +675,30 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if (valor2 == 0) {
+    if (valor2 == 0)
+    {
         perror("ERROR, division por cero");
-        //llamar a STOP
+        // llamar a STOP
     }
-    else {
-        if (tipo_op1 == TIPO_REGISTRO) {
+    else
+    {
+        if (tipo_op1 == TIPO_REGISTRO)
+        {
             valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-            resultado =  valor1 / valor2;
+            resultado = valor1 / valor2;
             registros[AC] = valor1 % valor2;
         }
-        else if (tipo_op1 == TIPO_MEMORIA) {
+        else if (tipo_op1 == TIPO_MEMORIA)
+        {
             valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-            resultado =  valor1 / valor2;
+            resultado = valor1 / valor2;
             registros[AC] = valor1 % valor2;
             dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
             GuardarEnMemoria(memoria, registros, dir_fis, resultado);
@@ -653,7 +709,8 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
     }
 }
 
-void cmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+void cmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int32_t resultado;
     valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
@@ -661,99 +718,122 @@ void cmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado;
 
-    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if(tipo_op1==TIPO_REGISTRO){
-        resultado=registros[valor1]<<valor2;
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        resultado = registros[valor1] << valor2;
         registros[valor1] = resultado;
-    }else if(tipo_op1 == TIPO_MEMORIA){
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 << valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
-    }else
+    }
+    else
         printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
 
     cambiarCC(registros, resultado);
 }
 
-void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado;
 
-    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if(tipo_op1==TIPO_REGISTRO){
-        resultado=registros[valor1]>>valor2;
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        resultado = registros[valor1] >> valor2;
         registros[valor1] = resultado;
-    }else if(tipo_op1 == TIPO_MEMORIA){
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 >> valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
-    }else
+    }
+    else
         printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
 
     cambiarCC(registros, resultado);
 }
 
-void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado;
 
-    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if(tipo_op1==TIPO_REGISTRO){
-        resultado=registros[valor1]&valor2;
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        resultado = registros[valor1] & valor2;
         registros[valor1] = resultado;
-    }else if(tipo_op1 == TIPO_MEMORIA){
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 & valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
-    }else
+    }
+    else
         printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
 
     cambiarCC(registros, resultado);
 }
 
-void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado;
 
-    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if(tipo_op1==TIPO_REGISTRO){
-        resultado=registros[valor1]|valor2;
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        resultado = registros[valor1] | valor2;
         registros[valor1] = resultado;
-    }else if(tipo_op1 == TIPO_MEMORIA){
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 | valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
-    }else
+    }
+    else
         printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
 
     cambiarCC(registros, resultado);
 }
 
-void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
     int32_t resultado;
 
-    valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
-    if (tipo_op1 == TIPO_REGISTRO) {
-        resultado = registros[valor1]^valor2;
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        resultado = registros[valor1] ^ valor2;
         registros[valor1] = resultado;
     }
-    else if (tipo_op1 == TIPO_MEMORIA) {
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 ^ valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
     }
@@ -763,21 +843,24 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) {
+void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis1, dir_fis2;
     int32_t vaux;
 
-    if (tipo_op1 == TIPO_REGISTRO) {
-        vaux=registros[valor2];
-        registros[valor2]=registros[valor1];
-        registros[valor1]=vaux;
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        vaux = registros[valor2];
+        registros[valor2] = registros[valor1];
+        registros[valor1] = vaux;
     }
-    else if (tipo_op1 == TIPO_MEMORIA) {
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
         dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
         dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
 
-        valor1=obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        valor2=obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
         GuardarEnMemoria(memoria, registros, dir_fis1, valor2);
         GuardarEnMemoria(memoria, registros, dir_fis2, valor1);
@@ -786,13 +869,50 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
         printf("Error SWAP \n");
 }
 
+void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
+    int16_t dir_fis;
+    int32_t resultado;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        registros[valor1] = registros[valor1] & 0xFFFF0000;
+        registros[valor1] = registros[valor1] | valor2;
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0xFFFF0000;
+        resultado = resultado | (valor2 & 0x0000FFFF);
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error (Inmediato o Ninguno) LDL Cualquiera \n");
+}
+
+void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
+    int16_t dir_fis;
+    int32_t resultado;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        registros[valor1] = registros[valor1] & 0x0000FFFF;
+        registros[valor1] = registros[valor1] | (valor2 << 16);
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0x0000FFFF;
+        resultado = resultado | (valor2 << 16);
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
+}
+
 //---------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
