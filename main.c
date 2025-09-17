@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #define TAMANIOMEMORIA 16384
 #define TAMANIOREGISTROS 32
@@ -101,6 +102,8 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
+void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
+
 void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
 void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
@@ -115,6 +118,8 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 int main()
 {
+    srand(time(NULL));
+
     int32_t registros[TAMANIOREGISTROS];
 
     int8_t memoria[TAMANIOMEMORIA];
@@ -534,6 +539,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             shr(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x18: // SAR
+            sar(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x19: // AND
             and(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
@@ -554,6 +560,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             ldh(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         case 0x1F: // RND
+            rnd(memoria, registros, tabla_seg, tipo2, tipo1, valor2, valor1);
             break;
         }
     }
@@ -743,7 +750,34 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) //Shift-right lógico
+{
+    int16_t dir_fis;
+    int32_t resultado;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        resultado = (uint32_t) registros[valor1] >> valor2;
+        registros[valor1] = resultado;
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = (uint32_t) valor1 >> valor2;
+        GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+    }
+    else
+        printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
+
+    cambiarCC(registros, resultado);
+}
+
+//En C, el operador >> agrega 0s si la variable es sin signo y agrega 1s si tiene signo.
+
+void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) //Shift-right aritmético
 {
     int16_t dir_fis;
     int32_t resultado;
@@ -763,7 +797,7 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
     }
     else
-        printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
+        printf("Error: (Ninguno o Inmediato) SAR Cualquiera \n");
 
     cambiarCC(registros, resultado);
 }
@@ -913,6 +947,22 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
+}
+
+void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+    int16_t dir_fis;
+
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    if (tipo_op1 == TIPO_REGISTRO)
+        registros[valor1] = rand() % valor2;
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
+        dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        GuardarEnMemoria(memoria, registros, dir_fis, rand() % valor2);
+    }
+    else
+        printf("Error RND Inmediato o Ninguno a Cualquiera \n");
 }
 
 //---------------------------------------------------------------------------------------
