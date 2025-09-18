@@ -120,7 +120,13 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
-void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor);
+void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]);
+
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]);
+
+void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor);
+
+void Jump(int32_t registros[], Segmento tabla_seg[], uint32_t valor);
 
 void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
@@ -135,6 +141,8 @@ void jnz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 void jnp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
 void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
 int main()
 {
@@ -318,11 +326,13 @@ int32_t ExtenderSigno24Bits(int32_t valor)
     }
 }
 
-int32_t ExtenderSigno16Bits(int32_t valor){
-    if(valor & 0x00008000)
+int32_t ExtenderSigno16Bits(int32_t valor)
+{
+    if (valor & 0x00008000)
     {
         return valor | 0xFFFF0000; // Si el bit 16 está en 1 entonces es un numero negativo. // Se rellena con 1s
-    }else
+    }
+    else
     {
         return valor & 0x0000FFFF; // No hace nada
     }
@@ -390,7 +400,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
     int32_t aux = 0;
     int i;
 
-    if (base + 4 < TAMANIOMEMORIA)
+    if (base >= 0 && base + 3 < TAMANIOMEMORIA)
     {
         for (i = 0; i < 4; i++)
         {
@@ -412,7 +422,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
 void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor)
 { // Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
 
-    if (base + 4 < TAMANIOMEMORIA)
+    if (base >= 0 && base + 3 < TAMANIOMEMORIA)
     {
         memoria[base] = (valor & 0xFF000000) >> 24;
         memoria[base + 1] = (valor & 0x00FF0000) >> 16;
@@ -434,7 +444,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
     FILE *f;
 
-    int8_t id[6];
+    char id[6];
 
     int8_t ver;
 
@@ -492,6 +502,7 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 {
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
+        printf("IP: %d \n", registros[IP]);
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
         printf("EAX: ");
         printf("%d\n", registros[EAX]);
@@ -599,6 +610,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         switch (registros[OPC])
         {
         case 0x00: // SYS
+            sys(memoria, registros, tabla_seg, valor2);
             break;
         case 0x01: // JMP
             jmp(memoria, registros, tabla_seg, tipo2, valor2);
@@ -622,6 +634,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             jnn(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x08: // NOT
+            not(memoria, registros, tabla_seg, tipo2, valor2);
             break;
         case 0x0F: // STOP
             registros[IP] = 0xFFFFFFFF;
@@ -670,6 +683,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error ADD Inmediato o ninguno += cualquiera \n");
+
     cambiarCC(registros, resultado);
 }
 
@@ -717,6 +731,7 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error MUL Inmediato o ninguno *= cualquiera \n");
+
     cambiarCC(registros, resultado);
 }
 
@@ -750,6 +765,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
         }
         else
             printf("Error (Inmediato o ninugno) / cualquiera \n");
+
         cambiarCC(registros, resultado);
     }
 }
@@ -788,7 +804,7 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) //Shift-right lógico
+void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) // Shift-right lógico
 {
     int16_t dir_fis;
     int32_t resultado;
@@ -797,14 +813,14 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = (uint32_t) registros[valor1] >> valor2;
+        resultado = (uint32_t)registros[valor1] >> valor2;
         registros[valor1] = resultado;
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = (uint32_t) valor1 >> valor2;
+        resultado = (uint32_t)valor1 >> valor2;
         GuardarEnMemoria(memoria, registros, dir_fis, resultado);
     }
     else
@@ -813,9 +829,9 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     cambiarCC(registros, resultado);
 }
 
-//En C, el operador >> agrega 0s si la variable es sin signo y agrega 1s si tiene signo.
+// En C, el operador >> agrega 0s si la variable es sin signo y agrega 1s si tiene signo.
 
-void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) //Shift-right aritmético
+void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1) // Shift-right aritmético
 {
     int16_t dir_fis;
     int32_t resultado;
@@ -987,7 +1003,8 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
 }
 
-void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1){
+void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
+{
     int16_t dir_fis;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
@@ -1003,53 +1020,178 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
 }
 
-void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor){
+void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[])
+{
+    int i;
+    int32_t valor;
+    char bin[33];
+    for (i = 0; i < cantidad; i++)
+    {
+        printf("[%04X]: ", dir_fis + i * tamano);
+        switch (modo)
+        {
+        case 0x01: // interpreta decimal
+            scanf("%d", &valor);
+            break;
+        case 0x02: // interpreta caracteres
+            scanf("%c", &valor);
+            break;
+        case 0x04: // interp    reta octal
+            scanf("%o", &valor);
+            break;
+        case 0x08: // interpreta hexadecimal
+            scanf("%X", &valor);
+            break;
+        case 0x10: // interpreta binario
+            scanf("%32s", bin);
+            valor = (int32_t)strtol(bin, NULL, 2); // convierte una serie de caracteres en enteros
+            break;
+        default:
+            printf("Modo para leer no valido \n");
+        }
+        GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, valor);
+        printf("\n");
+    }
+}
 
-    if(valor>=0 && valor<tabla_seg[0].tamanio){
-        registros[IP]=valor;
-    }else{
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[])
+{
+    int i;
+    int32_t valor;
+    for (i = 0; i < cantidad; i++)
+    {
+        valor = LeerMemoria(memoria, registros, dir_fis + i * tamano);
+        printf("[%04X]: ", dir_fis + i * tamano);
+        switch (modo)
+        {
+        case 0x01: // interpreta decimal
+            printf("%d ", valor);
+            break;
+        case 0x02: // interpreta caracteres
+            printf("%c", valor);
+            break;
+        case 0x04: // interpreta octal
+            printf("%o", valor);
+            break;
+        case 0x08: // interpreta hexadecimal
+            printf("%X", valor);
+            break;
+        case 0x10: // interpreta binario
+            printBits32(valor);
+            break;
+        default:
+            printf("Modo para escribir no valido \n");
+        }
+        printf("\n");
+    }
+}
+
+void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor)
+{
+    int32_t modo, puntero;
+    int16_t codSeg, desplazamiento, dir_fis, cantidad, tamano;
+    modo = registros[EAX];
+    puntero = registros[EDX];
+    LeerPuntero(puntero, &codSeg, &desplazamiento);
+    dir_fis = tabla_seg[codSeg].base + desplazamiento;
+    cantidad = registros[ECX] & 0xFFFF;
+    tamano = (registros[ECX] >> 16) & 0xFFFF;
+    switch (modo)
+    {
+    case 0x01: // Lectura
+        read(dir_fis, cantidad, tamano, valor, memoria, registros);
+        break;
+    case 0x02: // Escritura
+        write(dir_fis, cantidad, tamano, valor, memoria, registros);
+        break;
+    default:
+        printf("Modo para el SYS no valido \n");
+    }
+}
+
+void Jump(int32_t registros[], Segmento tabla_seg[], uint32_t valor)
+{
+
+    if (valor >= 0 && valor < tabla_seg[0].tamanio)
+    {
+        registros[IP] = valor;
+    }
+    else
+    {
         printf("ERROR: Se intento acceder afuera del segmento de codigo\n");
     }
 }
 
-void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
-        valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    Jump(registros, tabla_seg, valor2);
+}
+
+void jz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+    if (getZ(registros) == 1 && getN(registros) == 0)
         Jump(registros, tabla_seg, valor2);
 }
 
-void jz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+void jp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getZ(registros))
+    if (getZ(registros) == 0 && getN(registros) == 0)
         Jump(registros, tabla_seg, valor2);
 }
 
-void jp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+void jene(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getZ(registros)==0 && getN(registros) == 0)
+    if (getN(registros))
         Jump(registros, tabla_seg, valor2);
 }
 
-void jene(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+void jnz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getN(registros))
+    if (getZ(registros) == 0)
         Jump(registros, tabla_seg, valor2);
 }
 
-void jnz(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+void jnp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getZ(registros)==0)
+    if (getZ(registros) || getN(registros))
         Jump(registros, tabla_seg, valor2);
 }
 
-void jnp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getZ(registros) || getN(registros))
+    if (getN(registros) == 0)
         Jump(registros, tabla_seg, valor2);
 }
 
-void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
-    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-    if(getN(registros)==0)
-        Jump(registros, tabla_seg, valor2);
+void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
+{
+    int i;
+    int16_t dir_fis;
+    uint32_t bit;
+    int32_t resultado = 0;
+
+    if (tipo_op2 != TIPO_INMEDIATO && tipo_op2 != TIPO_NINGUNO)
+    {
+        resultado = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+        resultado = ~resultado;
+        if (tipo_op2 == TIPO_REGISTRO)
+            registros[valor2] = resultado;
+        else
+        {
+            dir_fis = ProcesarOPMemoria(valor2, registros, tabla_seg);
+            GuardarEnMemoria(memoria, registros, dir_fis, resultado);
+        }
+        cambiarCC(registros, resultado);
+    }
+    else
+        printf("Error: NOT aplicado a un inmediato o ninguno \n");
 }
+
 //---------------------------------------------------------------------------------------
