@@ -72,7 +72,7 @@ int8_t getN(int32_t registros[]);
 
 int8_t getZ(int32_t registros[]);
 
-int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP);
+int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar);
 
 int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]);
 
@@ -80,7 +80,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base);
 
 void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor);
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char* file);
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
@@ -144,7 +144,17 @@ void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
-int main()
+void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+
+void mostrarInstruccion(int8_t memoria[], int32_t * ip);
+
+void mostrarOperador(int32_t op, uint8_t tipo);
+
+void copiarRegistro(uint32_t reg, char registro[]);
+
+void obtenerMnemonico(uint8_t byte_de_control, char mnemonico[]);
+
+int main(int argc, char *argv[])
 {
     srand(time(NULL));
 
@@ -154,9 +164,13 @@ int main()
 
     Segmento tabla_seg[NUM_SEG];
 
-    IniciarMaquinaVirtual(registros, memoria, tabla_seg);
+    IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[1]);
 
     ejecutarPrograma(memoria, registros, tabla_seg);
+
+    if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
+        Dissasembler(memoria, registros, tabla_seg);
+    }
 
     return 0;
 }
@@ -297,19 +311,19 @@ int8_t getZ(int32_t registros[])
     return getBit(registros[CC], 30);
 }
 
-int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
+int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar)
 {
-
     int32_t valor = 0;
 
     for (int i = 0; i < tipoOP; i++)
     {
         valor = valor << 8;
         valor = valor | (uint8_t)memoria[*ip];
+        if(mostrar){
+            printf("%02X ", (uint8_t)memoria[*ip]);
+        }
         *ip = *ip + 1;
     }
-
-    valor = ExtenderSigno16Bits(valor);
 
     return valor;
 }
@@ -322,7 +336,7 @@ int32_t ExtenderSigno24Bits(int32_t valor)
     }
     else
     {
-        return valor & 0x00FFFFFF; // No hace nada
+        return valor;
     }
 }
 
@@ -334,7 +348,7 @@ int32_t ExtenderSigno16Bits(int32_t valor)
     }
     else
     {
-        return valor & 0x0000FFFF; // No hace nada
+        return valor;
     }
 }
 
@@ -350,7 +364,7 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
         resultado = registros[valor];
         break;
     case TIPO_INMEDIATO:
-        resultado = valor;
+        resultado = ExtenderSigno16Bits(valor);
         break;
     case TIPO_MEMORIA:
         dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg);
@@ -439,7 +453,7 @@ void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32
 
 //------------------ LOOP DE EJECUCION ---------------------------------------
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[])
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char file[])
 { // cambie en registro int8_t por int32_t
 
     FILE *f;
@@ -450,7 +464,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
     int16_t tamanio;
 
-    f = fopen("prueba.vmx", "rb");
+    f = fopen(file, "rb");
 
     fread(id, 5, 1, f); // Leer identificador
 
@@ -502,13 +516,8 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 {
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
-        printf("IP: %d \n", registros[IP]);
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
-        printf("EAX: ");
-        printf("%d\n", registros[EAX]);
-        printf("EBX: ");
-        printf("%d\n", registros[EBX]);
-        printf("\n");
+
     }
 }
 
@@ -531,10 +540,10 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
 
     registros[OPC] = byte_de_control & 0x1F;
 
-    registros[OP2] = registros[OP2] | (LeerOperando(memoria, &ip, tipo_opB) & 0x00ffffff);
+    registros[OP2] = registros[OP2] | (LeerOperando(memoria, &ip, tipo_opB, 0) & 0x00ffffff);
 
     if (tipo_opA != 0)
-        registros[OP1] = registros[OP1] | (LeerOperando(memoria, &ip, tipo_opA) & 0x00ffffff);
+        registros[OP1] = registros[OP1] | (LeerOperando(memoria, &ip, tipo_opA, 0) & 0x00ffffff);
 
     registros[IP] = ip;
 
@@ -1192,6 +1201,227 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else
         printf("Error: NOT aplicado a un inmediato o ninguno \n");
+}
+
+void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+{
+    int32_t ip=tabla_seg[0].base;
+
+    while (ip < tabla_seg[0].tamanio && ip != 0xFFFFFFFF)
+    {
+        mostrarInstruccion(memoria, &ip); // manda a mostrar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
+    }
+}
+
+void mostrarInstruccion(int8_t memoria[], int32_t * ip) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
+{
+    uint8_t byte_de_control = memoria[(*ip)];
+    uint8_t tipo_opB, tipo_opA;
+    int32_t op1,op2;
+    char mnem[5];
+
+
+    printf("[%04X] ", *ip);
+
+    printf("%02X ", byte_de_control);
+
+    (*ip)+=1;
+
+    tipo_opB = (byte_de_control >> 6) & 0x03;
+
+    tipo_opA = (byte_de_control >> 4) & 0x03;
+
+    byte_de_control = byte_de_control & 0x1F;
+
+    op2 = LeerOperando(memoria, ip, tipo_opB, 1);
+
+    if (tipo_opA != 0)
+        op1 = LeerOperando(memoria, ip, tipo_opA, 1);
+
+    printf("\t|   ");
+
+    obtenerMnemonico(byte_de_control, mnem);
+
+    printf("%s\t", mnem);
+
+    if (tipo_opA != 0){
+
+        mostrarOperador(op1, tipo_opA);
+        printf(",\t");
+    }
+
+    mostrarOperador(op2, tipo_opB);
+
+    printf("\n");
+}
+
+void mostrarOperador(int32_t op, uint8_t tipo){
+    char reg[4];
+    uint8_t codRegistro;
+    int16_t desplazamientoOperando;
+
+    switch (tipo){
+
+    case TIPO_REGISTRO:
+            copiarRegistro(op, reg);
+            printf("%s", reg);
+            break;
+    case TIPO_INMEDIATO: printf("%d", op);
+            break;
+    case TIPO_MEMORIA:
+            codRegistro=(op >> 16) & 0xFF;
+            desplazamientoOperando = (op & 0x0000FFFF);
+            copiarRegistro(codRegistro, reg);
+
+            if(desplazamientoOperando==0){
+                printf("[%s]", reg);
+            }else if(desplazamientoOperando>0){
+                printf("[%s+%d]", reg, desplazamientoOperando);
+            }else{
+                printf("[%s%d]", reg, desplazamientoOperando);
+            }
+            break;
+    }
+}
+
+void copiarRegistro(uint32_t reg, char registro[]){
+    switch(reg){
+        case LAR:
+            strcpy(registro, "LAR");
+            break;
+        case MAR:
+            strcpy(registro, "MAR");
+            break;
+        case MBR:
+            strcpy(registro, "MBR");
+            break;
+        case IP:
+            strcpy(registro, "IP");
+            break;
+        case OPC:
+            strcpy(registro, "OPC");
+            break;
+        case OP1:
+            strcpy(registro, "OP1");
+            break;
+        case OP2:
+            strcpy(registro, "OP2");
+            break;
+        case EAX:
+            strcpy(registro, "EAX");
+            break;
+        case EBX:
+            strcpy(registro, "EBX");
+            break;
+        case ECX:
+            strcpy(registro, "ECX");
+            break;
+        case EDX:
+            strcpy(registro, "EDX");
+            break;
+        case EEX:
+            strcpy(registro, "EEX");
+            break;
+        case EFX:
+            strcpy(registro, "EFX");
+            break;
+        case AC:
+            strcpy(registro, "AC");
+            break;
+        case CC:
+            strcpy(registro, "CC");
+            break;
+        case CS:
+            strcpy(registro, "CS");
+            break;
+        case DS:
+            strcpy(registro, "DS");
+            break;
+        default: strcpy(registro, "");
+    }
+}
+
+void obtenerMnemonico(uint8_t byte_de_control, char mnemonico[]){
+    switch (byte_de_control){
+        case 0x00: // SYS
+            strcpy(mnemonico,"SYS");
+            break;
+        case 0x01: // JMP
+            strcpy(mnemonico,"JMP");
+            break;
+        case 0x02: // JZ
+            strcpy(mnemonico,"JZ");
+            break;
+        case 0x03: // JP
+            strcpy(mnemonico,"JP");
+            break;
+        case 0x04: // JN
+            strcpy(mnemonico,"JN");
+            break;
+        case 0x05: // JNZ
+            strcpy(mnemonico,"JNZ");
+            break;
+        case 0x06: // JNP
+            strcpy(mnemonico,"JNP");
+            break;
+        case 0x07: // JNN
+            strcpy(mnemonico,"JNN");
+            break;
+        case 0x08: // NOT
+            strcpy(mnemonico,"NOT");
+            break;
+        case 0x0F: // STOP
+            strcpy(mnemonico,"STOP");
+            break;
+        case 0x10: // MOV
+            strcpy(mnemonico,"MOV");
+            break;
+        case 0x11: // ADD
+            strcpy(mnemonico,"ADD");
+            break;
+        case 0x12: // SUB
+            strcpy(mnemonico,"SUB");
+            break;
+        case 0x13: // MUL
+            strcpy(mnemonico,"MUL");
+            break;
+        case 0x14: // DIV
+            strcpy(mnemonico,"DIV");
+            break;
+        case 0x15: // CMP
+            strcpy(mnemonico,"CMP");
+            break;
+        case 0x16: // SHL
+            strcpy(mnemonico,"SHL");
+            break;
+        case 0x17: // SHR
+            strcpy(mnemonico,"SHR");
+            break;
+        case 0x18: // SAR
+            strcpy(mnemonico,"SAR");
+            break;
+        case 0x19: // AND
+            strcpy(mnemonico,"AND");
+            break;
+        case 0x1A: // OR
+            strcpy(mnemonico,"OR");
+            break;
+        case 0x1B: // XOR
+            strcpy(mnemonico,"XOR");
+            break;
+        case 0x1C: // SWAP
+            strcpy(mnemonico,"SWAP");
+            break;
+        case 0x1D: // LDL
+            strcpy(mnemonico,"LDL");
+            break;
+        case 0x1E: // LDH
+            strcpy(mnemonico,"LDH");
+            break;
+        case 0x1F: // RND
+            strcpy(mnemonico,"RND");
+            break;
+        }
 }
 
 //---------------------------------------------------------------------------------------
