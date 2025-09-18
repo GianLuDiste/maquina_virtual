@@ -62,6 +62,8 @@ void LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento)
 
 int32_t ExtenderSigno24Bits(int32_t valor);
 
+int32_t ExtenderSigno16Bits(int32_t valor);
+
 int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
 
 void cambiarCC(int32_t registros[], int32_t valor);
@@ -295,9 +297,12 @@ int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP)
     for (int i = 0; i < tipoOP; i++)
     {
         valor = valor << 8;
-        valor = valor | memoria[*ip];
+        valor = valor | (uint8_t)memoria[*ip];
         *ip = *ip + 1;
     }
+
+    valor = ExtenderSigno16Bits(valor);
+
     return valor;
 }
 
@@ -310,6 +315,16 @@ int32_t ExtenderSigno24Bits(int32_t valor)
     else
     {
         return valor & 0x00FFFFFF; // No hace nada
+    }
+}
+
+int32_t ExtenderSigno16Bits(int32_t valor){
+    if(valor & 0x00008000)
+    {
+        return valor | 0xFFFF0000; // Si el bit 16 está en 1 entonces es un numero negativo. // Se rellena con 1s
+    }else
+    {
+        return valor & 0x0000FFFF; // No hace nada
     }
 }
 
@@ -479,15 +494,10 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     {
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
         printf("EAX: ");
-        printBits32(registros[EAX]);
+        printf("%d\n", registros[EAX]);
         printf("EBX: ");
-        printBits32(registros[EBX]);
-        printf("CC: ");
-        printBits32(registros[CC]);
-        // printf("ECX: "); printBits32(registros[ECX]);
-        // printf("Memoria [5]: %d \n", LeerMemoria(memoria, registros, tabla_seg[1].base+5*TAMANIOMEM));
-        // printf("CC: "); printBits32(registros[CC]);
-        printf("\n \n");
+        printf("%d\n", registros[EBX]);
+        printf("\n");
     }
 }
 
@@ -993,9 +1003,6 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
 }
 
-//Hay que ver la manera de saber el espacio de la instrucción en la memoria[] teniendo el desplazamiento (Algunas instrucciones tienen 1,2 o ningún operando).
-//(Es decir, las instrucciones tienen diferentes tamaños)
-
 void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor){
 
     if(valor>=0 && valor<tabla_seg[0].tamanio){
@@ -1045,5 +1052,4 @@ void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if(getN(registros)==0)
         Jump(registros, tabla_seg, valor2);
 }
-
 //---------------------------------------------------------------------------------------
