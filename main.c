@@ -1105,13 +1105,13 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
     dir_fis = tabla_seg[codSeg].base + desplazamiento;
     cantidad = registros[ECX] & 0xFFFF;
     tamano = (registros[ECX] >> 16) & 0xFFFF;
-    switch (modo)
+    switch (valor)
     {
     case 0x01: // Lectura
-        read(dir_fis, cantidad, tamano, valor, memoria, registros);
+        read(dir_fis, cantidad, tamano, modo, memoria, registros);
         break;
     case 0x02: // Escritura
-        write(dir_fis, cantidad, tamano, valor, memoria, registros);
+        write(dir_fis, cantidad, tamano, modo, memoria, registros);
         break;
     default:
         printf("Modo para el SYS no valido \n");
