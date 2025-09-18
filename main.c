@@ -118,6 +118,12 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
+void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]);
+
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]);
+
+void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor);
+
 void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor);
 
 void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
@@ -377,7 +383,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
     int32_t aux = 0;
     int i;
 
-    if (base + 4 < TAMANIOMEMORIA)
+    if (base >= 0 && base + 3 < TAMANIOMEMORIA)
     {
         for (i = 0; i < 4; i++)
         {
@@ -399,7 +405,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
 void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor)
 { // Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
 
-    if (base + 4 < TAMANIOMEMORIA)
+    if (base >= 0 && base + 3 < TAMANIOMEMORIA)
     {
         memoria[base] = (valor & 0xFF000000) >> 24;
         memoria[base + 1] = (valor & 0x00FF0000) >> 16;
@@ -421,7 +427,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
     FILE *f;
 
-    int8_t id[6];
+    char id[6];
 
     int8_t ver;
 
@@ -482,12 +488,12 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
         printf("IP: %d \n", registros[IP]);
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
         printf("EAX: "); printBits32(registros[EAX]);
-        printf("EBX: "); printBits32(registros[EBX]);
-        //printf("ECX: "); printBits32(registros[ECX]);
-        //printf("EDX: "); printBits32(registros[EDX]);
-        printf("CC: "); printBits32(registros[CC]);
+        //printf("EBX: "); printBits32(registros[EBX]);
+        printf("ECX: "); printBits32(registros[ECX]);
+        printf("EDX: "); printBits32(registros[EDX]);
+        //printf("CC: "); printBits32(registros[CC]);
+        printf("Mem[2]: "); mostrarMemoria(memoria, registros, tabla_seg, 2);
         printf("IP: %d \n", registros[IP]);
-        //printf("Memoria [5]: \n"); mostrarMemoria(memoria, registros, tabla_seg, 5);
         printf("\n \n \n");
     }
 }
@@ -590,6 +596,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         switch (registros[OPC])
         {
         case 0x00: // SYS
+            sys(memoria, registros, tabla_seg, valor2);
             break;
         case 0x01: // JMP
             jmp(memoria, registros, tabla_seg, tipo2, valor2);
@@ -998,8 +1005,87 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
 }
 
-//Hay que ver la manera de saber el espacio de la instrucción en la memoria[] teniendo el desplazamiento (Algunas instrucciones tienen 1,2 o ningún operando).
-//(Es decir, las instrucciones tienen diferentes tamaños)
+void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]) {
+    int i;
+    int32_t valor;
+    char bin[33];
+    for (i = 0 ; i < cantidad ; i++) {
+        printf("[%04X]: ", dir_fis + i * tamano);
+        switch (modo) {
+            case 0x01: // interpreta decimal
+                scanf("%d", &valor);
+                break;
+            case 0x02: // interpreta caracteres
+                scanf("%c", &valor);
+                break;
+            case 0x04: // interp    reta octal
+                scanf("%o", &valor);
+                break;
+            case 0x08: // interpreta hexadecimal
+                scanf("%X", &valor);
+                break;
+            case 0x10: // interpreta binario
+                scanf("%32s", bin);
+                valor = (int32_t)strtol(bin, NULL, 2); // convierte una serie de caracteres en enteros
+                break;
+            default:
+                printf("Modo para leer no valido \n");
+        }
+        GuardarEnMemoria(memoria, registros, dir_fis + i*tamano, valor);
+        printf("\n");
+    }
+}
+
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]) {
+    int i;
+    int32_t valor;
+    for (i = 0 ; i < cantidad ; i++){
+        valor = LeerMemoria(memoria, registros, dir_fis + i * tamano);
+        printf("[%04X]: ", dir_fis + i * tamano);
+        switch (modo) {
+            case 0x01: // interpreta decimal
+                printf("%d ", valor);
+                break;
+            case 0x02: // interpreta caracteres
+                printf("%c", valor);
+                break;
+            case 0x04: // interpreta octal
+                printf("%o", valor);
+                break;
+            case 0x08: // interpreta hexadecimal
+                printf("%X", valor);
+                break;
+            case 0x10: // interpreta binario
+                printBits32(valor);
+                break;
+            default:
+                printf("Modo para escribir no valido \n");
+        }
+        printf("\n");
+    }
+
+}
+
+void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor) {
+    int32_t modo, puntero;
+    int16_t codSeg, desplazamiento, dir_fis, cantidad, tamano;
+    modo = registros[EAX];
+    puntero = registros[EDX];
+    LeerPuntero(puntero, &codSeg, &desplazamiento);
+    dir_fis = tabla_seg[codSeg].base + desplazamiento;
+    cantidad = registros[ECX] & 0xFFFF;
+    tamano = (registros[ECX] >> 16) & 0xFFFF;
+    switch (modo) {
+        case 0x01: // Lectura
+            read(dir_fis, cantidad, tamano, valor, memoria, registros);
+            break;
+        case 0x02: // Escritura
+            write(dir_fis, cantidad, tamano, valor, memoria, registros);
+            break;
+        default:
+            printf("Modo para el SYS no valido \n");
+    }
+}
 
 void Jump(int32_t registros[], Segmento tabla_seg[] , uint32_t valor){
 
