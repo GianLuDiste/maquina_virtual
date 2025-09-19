@@ -1008,35 +1008,44 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[])
 {
     int i;
-    int32_t valor;
-    char bin[33];
-    for (i = 0; i < cantidad; i++)
-    {
-        fflush(stdin);
-        printf("[%04X]: ", dir_fis + i * tamano);
-        switch (modo)
+    int32_t valor, aux;
+    char bin[33], car;
+    if (modo <= 0 || !(modo == 0x01 || modo == 0x02 || modo == 0x04 || modo == 0x08 || modo == 0x10))
+        printf("Error, modo de lectura invalido \n");
+    else {
+        for (i = 0; i < cantidad; i++)
         {
-        case 0x01: // interpreta decimal
-            scanf("%d", &valor);
-            break;
-        case 0x02: // interpreta caracteres
-            scanf("%c", &valor);
-            break;
-        case 0x04: // interpreta octal
-            scanf("%o", &valor);
-            break;
-        case 0x08: // interpreta hexadecimal
-            scanf("%X", &valor);
-            break;
-        case 0x10: // interpreta binario
-            scanf("%32s", bin);
-            valor = (int32_t)strtol(bin, NULL, 2); // convierte una serie de caracteres en enteros
-            break;
-        default:
-            printf("Modo para leer no valido \n");
+            //fflush(stdin);
+            printf("[%04X]: ", dir_fis + i * tamano);
+            switch (modo)
+            {
+            case 0x01: // interpreta decimal
+                scanf("%d", &valor);
+                GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, valor);
+                break;
+            case 0x02: // interpreta caracteres
+                scanf("%c", &car);
+                scanf("%c", &aux); // si no esta esto, lee el "enter" como otro caracter
+                GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, car);
+                break;
+            case 0x04: // interpreta octal
+                scanf("%o", &valor);
+                GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, valor);
+                break;
+            case 0x08: // interpreta hexadecimal
+                scanf("%X", &valor);
+                GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, valor);
+                break;
+            case 0x10: // interpreta binario
+                scanf("%32s", bin);
+                valor = (int32_t)strtol(bin, NULL, 2); // convierte una serie de caracteres en enteros
+                GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, valor);
+                break;
+            default:
+                printf("Modo para leer no valido \n");
+            }
+            printf("\n");
         }
-        GuardarEnMemoria(memoria, registros, dir_fis + i * tamano, valor);
-        printf("\n");
     }
 }
 
@@ -1044,29 +1053,32 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
 {
     int i;
     int32_t valor;
-    for (i = 0; i < cantidad; i++)
-    {
+    if (modo <= 0 || modo > 0x1F)
+            printf("Error, modo de escritura invalido \n");
+    else {
+        for (i = 0; i < cantidad; i++)
+        {
         valor = LeerMemoria(memoria, registros, dir_fis + i * tamano);
         printf("[%04X]: ", dir_fis + i * tamano);
         if (getBit(modo, 0) == 1)
-            printf("0d%d ", valor);
+            printf("0d %d ", valor);
         if (getBit(modo, 1) == 1)
             if (valor >= 32 && valor <= 126)
-                printf("Aa%c ", valor);
+                printf("Aa '%c' ", valor);
             else
-                printf("Aa . ");
+                printf("Aa '.' ");
         if (getBit(modo, 2) == 1)
-            printf("0o%o ", valor);
+            printf("0o %o ", valor);
         if (getBit(modo, 3) == 1)
-            printf("0x%X ", valor);
+            printf("0x %X ", valor);
         if (getBit(modo, 4) == 1){
-            printf("0b");
+            printf("0b ");
             printBits32(valor);
         }
-        if (modo <= 0 || modo > 0x1F)
-            printf("Error, modo de escritura invalido \n");
         printf("\n");
+        }
     }
+
 }
 
 void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor)
@@ -1096,13 +1108,9 @@ void Jump(int32_t registros[], Segmento tabla_seg[], uint32_t valor)
 {
 
     if (valor >= 0 && valor < tabla_seg[0].tamanio)
-    {
         registros[IP] = valor;
-    }
     else
-    {
         printf("ERROR: Se intento acceder afuera del segmento de codigo\n");
-    }
 }
 
 void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
