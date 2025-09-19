@@ -228,13 +228,7 @@ void printBits16(uint16_t valor)
         // desplazamos i posiciones y sacamos el bit
         uint16_t bit = (valor >> i) & 1;
         printf("%u", bit);
-
-        if (i % 8 == 0 && i != 0)
-        {
-            printf(" ");
-        }
     }
-    printf("\n");
 }
 
 void printBits32(uint32_t valor)
@@ -250,7 +244,6 @@ void printBits32(uint32_t valor)
             printf(" ");
         }
     }
-    printf("\n");
 }
 
 //------------------------------------------------------
@@ -1071,26 +1064,23 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
     {
         valor = LeerMemoria(memoria, registros, dir_fis + i * tamano);
         printf("[%04X]: ", dir_fis + i * tamano);
-        switch (modo)
-        {
-        case 0x01: // interpreta decimal
-            printf("%d ", valor);
-            break;
-        case 0x02: // interpreta caracteres
-            printf("%c", valor);
-            break;
-        case 0x04: // interpreta octal
-            printf("%o", valor);
-            break;
-        case 0x08: // interpreta hexadecimal
-            printf("%X", valor);
-            break;
-        case 0x10: // interpreta binario
-            printBits32(valor);
-            break;
-        default:
-            printf("Modo para escribir no valido \n");
+        if (getBit(modo, 0) == 1)
+            printf("0d%d ", valor);
+        if (getBit(modo, 1) == 1)
+            if (valor >= 32 && valor <= 126)
+                printf("Aa%c ", valor);
+            else
+                printf("Aa . ");
+        if (getBit(modo, 2) == 1)
+            printf("0o%o ", valor);
+        if (getBit(modo, 3) == 1)
+            printf("0x%X ", valor);
+        if (getBit(modo, 4) == 1){
+            printf("0b");
+            printBits16(valor);
         }
+        if (modo == 0 || modo > 0x1F)
+            printf("Error, modo de escritura invalido \n");
         printf("\n");
     }
 }
@@ -1102,15 +1092,15 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
     modo = registros[EAX];
     puntero = registros[EDX];
     LeerPuntero(puntero, &codSeg, &desplazamiento);
-    dir_fis = tabla_seg[codSeg].base + desplazamiento;
+    dir_fis = tabla_seg[codSeg].base + desplazamiento*TAMANIOMEM;
     cantidad = registros[ECX] & 0xFFFF;
     tamano = (registros[ECX] >> 16) & 0xFFFF;
     switch (valor)
     {
-    case 0x01: // Lectura
+    case 0x1: // Lectura
         read(dir_fis, cantidad, tamano, modo, memoria, registros);
         break;
-    case 0x02: // Escritura
+    case 0x2: // Escritura
         write(dir_fis, cantidad, tamano, modo, memoria, registros);
         break;
     default:
