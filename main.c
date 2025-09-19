@@ -226,18 +226,14 @@ void printBits16(uint16_t valor)
     }
 }
 
-void printBits32(uint32_t valor) // creo que hay que elliminarla para entregar
+void printBits32(uint32_t valor)
 {
     for (int i = 31; i >= 0; i--)
     {
         uint32_t bit = (valor >> i) & 1;
         printf("%u", bit);
-
-        // opcional: espacio cada 8 bits (un byte)
         if (i % 8 == 0 && i != 0)
-        {
             printf(" ");
-        }
     }
 }
 
@@ -454,7 +450,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
     if (strcmp(id, "VMX25") != 0)
     {
-        perror("ERROR: Mal identificador");
+        printf("ERROR: Mal identificador");
     }
     else
     {
@@ -462,7 +458,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
         if (ver != 1)
         {
-            perror("ERROR: Version erronea");
+            printf("ERROR: Version erronea");
         }
         else
         {
@@ -726,28 +722,29 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
     int16_t dir_fis;
-    int32_t resultado;
+    int32_t resultado, aux;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (valor2 == 0)
     {
-        perror("ERROR, division por cero");
+        printf("ERROR, division por cero");
         // llamar a STOP
     }
     else
     {
         if (tipo_op1 == TIPO_REGISTRO)
         {
-            valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+            aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
             resultado = valor1 / valor2;
+            registros[valor1] = resultado;
             registros[AC] = valor1 % valor2;
         }
         else if (tipo_op1 == TIPO_MEMORIA)
         {
-            valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-            resultado = valor1 / valor2;
-            registros[AC] = valor1 % valor2;
+            aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+            resultado = aux / valor2;
+            registros[AC] = aux % valor2;
             dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
             GuardarEnMemoria(memoria, registros, dir_fis, resultado);
         }
@@ -1064,9 +1061,9 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
             printf("0x%X ", valor);
         if (getBit(modo, 4) == 1){
             printf("0b");
-            printBits16(valor);
+            printBits32(valor);
         }
-        if (modo == 0 || modo > 0x1F)
+        if (modo <= 0 || modo > 0x1F)
             printf("Error, modo de escritura invalido \n");
         printf("\n");
     }
