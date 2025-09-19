@@ -7,9 +7,10 @@
 
 #define TAMANIOMEMORIA 16384
 #define TAMANIOREGISTROS 32
-
 #define TAMANIOREG 4
 #define TAMANIOMEM 4
+#define NUM_SEG 8
+
 #define LAR 0
 #define MAR 1
 #define MBR 2
@@ -27,7 +28,6 @@
 #define CC 17
 #define CS 26
 #define DS 27
-#define NUM_SEG 8
 
 #define TIPO_NINGUNO 0
 #define TIPO_REGISTRO 1
@@ -40,47 +40,47 @@ typedef struct
     int16_t tamanio; // Tamanio del segmento
 } Segmento;
 
-void printBits(uint8_t valor);
+void printBits(uint8_t valor); // imprime bit a bit 8 bits, NO FINAL
 
-void printBits16(uint16_t valor);
+void printBits16(uint16_t valor);// imprime bit a bit 16 bits
 
-void printBits32(uint32_t valor);
+void printBits32(uint32_t valor); // imprime bit a bit 32 bits NO FINAL
 
-void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento);
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento); // muestra en pantalla una celda de memoria, NO FINAL
 
-uint8_t getBit(int32_t valor, int8_t n);
+uint8_t getBit(int32_t valor, int8_t n); // devuelve el valor del n-ésimo del valor
 
-int32_t setBit(int32_t valor, int8_t n, int8_t x);
+int32_t setBit(int32_t valor, int8_t n, int8_t x); // setea el n-ésimo bit del valor con el valor en x
 
-uint16_t BigEndianLittleEndian16(uint16_t valor);
+uint16_t BigEndianLittleEndian16(uint16_t valor); // transforma un valor de 16 bits de Big Endian a Litlle Endian
 
-uint32_t BigEndianLittleEndian32(uint32_t valor);
+uint32_t BigEndianLittleEndian32(uint32_t valor); // transforma un valor de 32 bits de Big Endian a Litlle Endian
 
 int32_t CrearPuntero(int16_t codSegmento, int16_t desplazamiento);
 
 void LeerPuntero(int32_t puntero, int16_t *codSegmento, int16_t *desplazamiento);
 
-int32_t ExtenderSigno24Bits(int32_t valor);
+int32_t ExtenderSigno24Bits(int32_t valor); // extiende el valor del operando a 32 bits
 
 int32_t ExtenderSigno16Bits(int32_t valor);
 
-int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]);
+int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[]); // obtiene el valor del operando segun su tipo
 
-void cambiarCC(int32_t registros[], int32_t valor);
+void cambiarCC(int32_t registros[], int32_t valor); // cambia los bits N y Z del registro CC, dependiendo del valor
 
-int8_t getN(int32_t registros[]);
+int8_t getN(int32_t registros[]); // obtiene el bit N del registro CC
 
-int8_t getZ(int32_t registros[]);
+int8_t getZ(int32_t registros[]); // obtiene el bit Z del registro CC
 
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar);
 
-int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]);
+int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]); // devuelve la dirección física de la memoria
 
-int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base);
+int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base); // lee de memoria los 4 bytes empezando de base
 
-void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor);
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor); // guarda en memoria 4 bytes empezando de base
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char* file);
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char* file); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
@@ -178,43 +178,38 @@ int main(int argc, char *argv[])
 //-------- UTILIDADES --------------------------
 
 uint8_t getBit(int32_t valor, int8_t n)
-{ // n = num de bit a retornar (0 a N-1) contando desde el numero menos significativo
+{ // n = número de bit a retornar (0 a N-1) contando desde el bit menos significativo
     uint8_t bit;
     int64_t mascara = 2;
     mascara = pow(mascara, n);
-
     bit = (valor & mascara) >> n;
-
     return bit;
 }
 
 int32_t setBit(int32_t valor, int8_t n, int8_t x)
-{ // n = num de bit a setear (0 a N-1) contando desde el numero menos significativo; x=1 o 0 (valor a setear)
+{ // n = número de bit a setear (0 a N-1) contando desde el bit menos significativo; x recibe el valor a setear (1 o 0)
     int64_t mascara = 2;
     mascara = pow(mascara, n);
-
     if (x == 0)
     {
         valor &= ~(mascara);
     }
     else
         valor |= mascara;
-
     return valor;
 }
 
-void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento)
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento) // creo que hay que elliminarla para entregar
 {
     printBits32(LeerMemoria(memoria, registros, tabla_seg[1].base + desplazamiento * TAMANIOMEM));
 }
 
 //-------- PRINTS DE BITS ----------------------
 
-void printBits(uint8_t valor)
+void printBits(uint8_t valor) // hay que eliminarla para entregar
 {
     for (int i = 7; i >= 0; i--)
     {
-        // desplazamos i posiciones y sacamos el bit
         uint8_t bit = (valor >> i) & 1;
         printf("%u", bit);
     }
@@ -231,7 +226,7 @@ void printBits16(uint16_t valor)
     }
 }
 
-void printBits32(uint32_t valor)
+void printBits32(uint32_t valor) // creo que hay que elliminarla para entregar
 {
     for (int i = 31; i >= 0; i--)
     {
@@ -294,12 +289,12 @@ void cambiarCC(int32_t registros[], int32_t valor)
         registros[CC] = registros[CC] | 0x80000000;
 }
 
-int8_t getN(int32_t registros[])
+int8_t getN(int32_t registros[]) // devuelve el valor del bit N del registro CC
 {
     return getBit(registros[CC], 31);
 }
 
-int8_t getZ(int32_t registros[])
+int8_t getZ(int32_t registros[]) // devuelve el valor del bit Z del registro CC
 {
     return getBit(registros[CC], 30);
 }
@@ -373,13 +368,13 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
 
 //--------------- FUNCIONES DE MEMORIA -------------------
 
-int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]) // Retorna la posicion de memoria donde tiene que guardar o leer
+int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]) // Retorna la dirección física en memoria donde tiene que guardar o leer
 {
     int8_t codRegistro = (valor & 0x00FF0000) >> 16;
     int16_t desplazamientoOperando = (valor & 0x0000FFFF);
     int16_t codSegmento;
     int16_t desplazamientoPuntero;
-    int32_t puntero = registros[codRegistro]; // Chequear que el registro funcione antes
+    int32_t puntero = registros[codRegistro];
 
     LeerPuntero(puntero, &codSegmento, &desplazamientoPuntero);
 
@@ -447,14 +442,10 @@ void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32
 //------------------ LOOP DE EJECUCION ---------------------------------------
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char file[])
-{ // cambie en registro int8_t por int32_t
-
+{
     FILE *f;
-
     char id[6];
-
     int8_t ver;
-
     int16_t tamanio;
 
     f = fopen(file, "rb");
@@ -479,13 +470,9 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             tamanio = BigEndianLittleEndian16(tamanio); // Pasar Tamano a LittleEndian
 
-            // Cada vez que vayamos a usar un valor de un registro hay que pasarlo a LittleEndian
-
             registros[CS] = CrearPuntero(0, 0); // Ponemos en 0 el valor de inicio del Code Segment
 
             registros[DS] = CrearPuntero(1, 0); // Ponemos en tamanio el valor de inicio del Data Segment
-
-            // Hay que hacerlo asi porque la computadora funciona en Little-Indian, por lo tanto lee los binarios al reves.
 
             fread(memoria, 1, tamanio, f); // Lectura del Archivo en la Memoria
 
