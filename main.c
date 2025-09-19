@@ -412,7 +412,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
         for (i = 0; i < 4; i++)
         {
             aux = aux << 8;
-            aux = aux | memoria[base + i];
+            aux = aux | (uint8_t)memoria[base + i];
         }
 
         registros[MBR] = aux;
@@ -431,10 +431,10 @@ void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32
 
     if (base >= 0 && base + 3 < TAMANIOMEMORIA)
     {
-        memoria[base] = (valor & 0xFF000000) >> 24;
-        memoria[base + 1] = (valor & 0x00FF0000) >> 16;
-        memoria[base + 2] = (valor & 0x0000FF00) >> 8;
-        memoria[base + 3] = (valor & 0x000000FF);
+        memoria[base] = (valor >> 24) & 0xFF;
+        memoria[base + 1] = (valor >> 16) & 0xFF;
+        memoria[base + 2] = (valor >> 8) & 0xFF;
+        memoria[base + 3] = (valor & 0xFF);
 
         registros[MBR] = valor;
     }
@@ -510,7 +510,6 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
         leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
-
     }
 }
 
@@ -1029,6 +1028,7 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
     char bin[33];
     for (i = 0; i < cantidad; i++)
     {
+        fflush(stdin);
         printf("[%04X]: ", dir_fis + i * tamano);
         switch (modo)
         {
@@ -1038,7 +1038,7 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
         case 0x02: // interpreta caracteres
             scanf("%c", &valor);
             break;
-        case 0x04: // interp    reta octal
+        case 0x04: // interpreta octal
             scanf("%o", &valor);
             break;
         case 0x08: // interpreta hexadecimal
@@ -1209,7 +1209,6 @@ void mostrarInstruccion(int8_t memoria[], int32_t * ip) // Lee la siguiente inst
     uint8_t tipo_opB, tipo_opA;
     int32_t op1,op2;
     char mnem[5];
-
 
     printf("[%04X] ", *ip);
 
