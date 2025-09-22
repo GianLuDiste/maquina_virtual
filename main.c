@@ -1199,7 +1199,7 @@ void mostrarInstruccion(int8_t memoria[], int32_t * ip) // Lee la siguiente inst
 {
     uint8_t byte_de_control = memoria[(*ip)];
     uint8_t tipo_opB, tipo_opA;
-    int32_t op1,op2;
+    int32_t op1,op2, opc;
     char mnem[5];
 
     printf("[%04X] ", *ip);
@@ -1212,7 +1212,7 @@ void mostrarInstruccion(int8_t memoria[], int32_t * ip) // Lee la siguiente inst
 
     tipo_opA = (byte_de_control >> 4) & 0x03;
 
-    byte_de_control = byte_de_control & 0x1F;
+    opc = byte_de_control & 0x1F;
 
     op2 = LeerOperando(memoria, ip, tipo_opB, 1);
 
@@ -1221,12 +1221,11 @@ void mostrarInstruccion(int8_t memoria[], int32_t * ip) // Lee la siguiente inst
 
     printf("\t|   ");
 
-    obtenerMnemonico(byte_de_control, mnem);
+    obtenerMnemonico(opc, mnem);
 
     printf("%s\t", mnem);
 
     if (tipo_opA != 0){
-
         mostrarOperador(op1, tipo_opA);
         printf(",\t");
     }
@@ -1247,7 +1246,9 @@ void mostrarOperador(int32_t op, uint8_t tipo){
             copiarRegistro(op, reg);
             printf("%s", reg);
             break;
-    case TIPO_INMEDIATO: printf("%d", op);
+    case TIPO_INMEDIATO:
+            op = ExtenderSigno16Bits(op);
+            printf("%d", op);
             break;
     case TIPO_MEMORIA:
             codRegistro=(op >> 16) & 0xFF;
