@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
 
     ejecutarPrograma(memoria, registros, tabla_seg);
 
-    if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
+     if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
         Dissasembler(memoria, registros, tabla_seg);
     }
 
@@ -199,14 +199,14 @@ int32_t setBit(int32_t valor, int8_t n, int8_t x)
     return valor;
 }
 
-void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento) // creo que hay que elliminarla para entregar
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento)
 {
     printBits32(LeerMemoria(memoria, registros, tabla_seg[1].base + desplazamiento * TAMANIOMEM));
 }
 
 //-------- PRINTS DE BITS ----------------------
 
-void printBits(uint8_t valor) // hay que eliminarla para entregar
+void printBits(uint8_t valor)
 {
     for (int i = 7; i >= 0; i--)
     {
@@ -391,7 +391,7 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
             exit(1);
     }
 
-    int32_t posicion = tabla_seg[codSegmento].base + (desplazamientoPuntero + desplazamientoOperando) * TAMANIOREG;
+    int32_t posicion = tabla_seg[codSegmento].base + desplazamientoPuntero + desplazamientoOperando;
 
     if (posicion < 0 || posicion > tabla_seg[codSegmento].base + tabla_seg[codSegmento].tamanio || posicion < tabla_seg[codSegmento].base)
     {
@@ -428,7 +428,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
     else
     {
         printf("ERROR: Lectura de memoria");
-        aux = 0; // Probablemente esté mal ya que 0 es un valor válido que puede tomar aux
+        exit(1);
     }
 
     return aux;
@@ -449,6 +449,7 @@ void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32
     else
     {
         printf("ERROR: Guardado en memoria");
+        exit(1);
     }
 }
 
@@ -664,6 +665,7 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
+
         GuardarEnMemoria(memoria, registros, dir_fis, valor2);
     }
     else{
@@ -1124,6 +1126,7 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
         for (i = 0; i < cantidad; i++)
         {
         valor = LeerMemoria(memoria, registros, dir_fis + i * tamano);
+
         printf("[%04X]: ", dir_fis + i * tamano);
         if (getBit(modo, 0) == 1)
             printf("0d %d ", valor);
@@ -1153,7 +1156,7 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
     modo = registros[EAX];
     puntero = registros[EDX];
     LeerPuntero(tabla_seg, puntero, &codSeg, &desplazamiento);
-    dir_fis = tabla_seg[codSeg].base + desplazamiento*TAMANIOMEM;
+    dir_fis = tabla_seg[codSeg].base + desplazamiento;
     cantidad = registros[ECX] & 0xFFFF;
     tamano = (registros[ECX] >> 16) & 0xFFFF;
     switch (valor)
