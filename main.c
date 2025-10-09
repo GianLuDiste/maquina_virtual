@@ -772,7 +772,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
         if (tipo_op1 == TIPO_REGISTRO)
         {
             aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-            resultado = valor1 / valor2;
+            resultado = aux / valor2;
             registros[valor1] = resultado;
             registros[AC] = valor1 % valor2;
         }
