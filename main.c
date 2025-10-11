@@ -774,7 +774,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
             aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
             resultado = aux / valor2;
             registros[valor1] = resultado;
-            registros[AC] = valor1 % valor2;
+            registros[AC] = aux % valor2;
         }
         else if (tipo_op1 == TIPO_MEMORIA)
         {
@@ -799,6 +799,7 @@ void cmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
     resultado = valor1 - valor2;
+
     cambiarCC(registros, resultado);
 }
 
