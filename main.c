@@ -80,6 +80,10 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base); // lee
 
 void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32_t valor); // guarda en memoria 4 bytes empezando de base
 
+void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint32_t tam_memoria, char nombre_archivo[]);
+
+void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem);
+
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char* file); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
@@ -168,7 +172,7 @@ int main(int argc, char *argv[])
 
     ejecutarPrograma(memoria, registros, tabla_seg);
 
-     if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
+    if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
         Dissasembler(memoria, registros, tabla_seg);
     }
 
@@ -452,6 +456,94 @@ void GuardarEnMemoria(int8_t memoria[], int32_t registros[], int32_t base, int32
         exit(1);
     }
 }
+
+
+void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint32_t tam_memoria, char nombre_archivo[]) {
+
+    char id[] = "VMI25";
+    uint8_t version = 1;
+    uint16_t tam_Kib = (uint16_t)(tam_memoria / 1024);
+
+    FILE *arch = fopen(nombre_archivo, "wb");
+
+    if (arch == NULL) {
+        printf("No se pudo abrir el archivo \n");
+        exit(1);
+    }
+
+    fwrite(id, sizeof(char), 5, arch); // escribo el identificador
+    fwrite(&version, sizeof(uint8_t), 1, arch); // escribo la version
+    fwrite(&tam_Kib, sizeof(uint16_t), 1, arch); // escribo el tamano de memoria en Kib
+
+    fwrite(registros, sizeof(int32_t), 32, arch); // escribo los registros
+    fwrite(tabla_seg, sizeof(Segmento), 8, arch); // escribo la tabla de segmentos
+
+    fwrite(memoria, sizeof(int8_t), tam_memoria, arch); // escribo la memoria
+
+    fclose(arch);
+
+    printf("Se guardo exitosamente el VMI \n");
+}
+
+void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem) {
+
+    char id[6];
+    uint8_t version;
+    uint16_t tam_Kib;
+
+    FILE *arch = fopen(nombre_archivo, "rb");
+
+    if (arch == NULL) {
+        printf("No se pudo abrir el archivo \n");
+        exit(1);
+    }
+
+    fread(id, sizeof(char), 5, arch);
+    id[5] = '\0'; // agrego el caracter nulo
+    if (strcmp(id, "VMI25") != 0) {
+        printf("El identificador es incorrecto \n");
+        exit(1);
+    }
+
+    fread(&version, sizeof(uint8_t), 1, arch);
+    if (version != 1) {
+        printf("Version no compatible \n");
+        exit(1);
+    }
+
+    fread(&tam_Kib, sizeof(uint16_t), 1, arch);
+    *tam_mem = tam_Kib * 1024;
+
+    fread(registros, sizeof(int32_t), 32, arch);
+    fread(tabla_seg, sizeof(Segmento), 8, arch);
+    fread(memoria, sizeof(int8_t), *tam_mem, arch);
+
+    fclose(arch);
+
+    printf("Se leyo exitosamente el VMI \n");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //------------------ EJECUCION ---------------------------------------
 
