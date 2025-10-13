@@ -168,13 +168,81 @@ int main(int argc, char *argv[])
 
     Segmento tabla_seg[NUM_SEG];
 
-    IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[1]);
+    int i,j,cantParametros;
 
-    ejecutarPrograma(memoria, registros, tabla_seg);
+    char * opcional;
 
+    int tamano;
+
+    int16_t base;
+
+    //IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[1]);
+
+    //ejecutarPrograma(memoria, registros, tabla_seg);
+
+    /*
     if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
         Dissasembler(memoria, registros, tabla_seg);
     }
+    */
+
+    int32_t basesParametros[50];
+
+    if(strstr(argv[1], ".vmi")!=NULL){
+        //Cargarmos la imagen .vmi
+        i=2;
+    }else if(strstr(argv[2], ".vmi")!=NULL){
+        //Tenemos un .vmx y un .vmi
+        i=3;
+    }else{
+        //Cargamos el .vmx sólo
+        i=2;
+    }
+
+    opcional = strtok(argv[i], "="); //Divide un string en diferentes cadenas separandolas por el segundo parámetro
+
+    if(i<argc && strcmp(opcional, "m")==0){
+        tamano = atoi(strtok(NULL, " ")); //Trae el valor de m y lo pasa a int
+        i++;
+    }
+
+    if(i<argc && strcmp(argv[i], "-d")==0){
+        //Dissasembler(memoria, registros, tabla_seg);
+        i++;
+    }
+
+    //----------- LECTURA DE PARAMETROS ------------------------------
+
+    if(i<argc){
+        //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
+        i++; //Salteamos -p
+
+        base=0;
+        //contLetras=0;
+        cantParametros=0;
+
+        for(;i<argc;i++){
+
+            basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
+
+            for(int j=0; j<=strlen(argv[i]); j++){
+                GuardarEnMemoria(memoria, registros, base+j, argv[i][j]); //Guardamos caracter por caracter (1 byte cada uno)
+            }
+
+            base+=j;
+        }
+
+        //El valor de base en este punto es donde terminan los parametros guardados en memoria
+
+        for(i=0; i<cantParametros; i++){
+            GuardarEnMemoria(memoria, registros, base, basesParametros[i]);
+            base+=4;
+        }
+
+        //El valor restante de base va a ser el tamaño del segmento de parámetros
+    }
+
+    //------------------------------------------------------
 
     return 0;
 }
