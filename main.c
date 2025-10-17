@@ -90,7 +90,7 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 
 void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem);
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char filevmx[], char filevmi[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[], char filevmi[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
 
@@ -208,6 +208,7 @@ int main(int argc, char *argv[])
         vmi = 0;
         i=2;
     }
+
     tamano = TAMANIOMEMORIA;
     if (i < argc) {
         opcional = strtok(argv[i], "="); //Divide un string en diferentes cadenas separandolas por el segundo parámetro
@@ -220,7 +221,7 @@ int main(int argc, char *argv[])
 
     int8_t memoria[tamano];
 
-    if(i<argc && strcmp(argv[i], "-d")==0){
+    if(i<argc && strcmp(argv[i], "-d")==0 && vmx){
         //Dissasembler(memoria, registros, tabla_seg);
         i++;
     }
@@ -249,7 +250,7 @@ int main(int argc, char *argv[])
             //El valor restante de base va a ser el tamaño del segmento de parámetros
             tabla_seg[0].base = 0;
             tabla_seg[0].tamanio = base;
-            registros[PS] = 0;
+            registros[PS] = tabla_seg[0].base;
         }
         else {
             registros[PS] = -1;
@@ -258,15 +259,16 @@ int main(int argc, char *argv[])
 
         // iniciar maquina virtual pasando el vmi o no
         if (vmi) {
-            IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[vmx], argv[vmi]);
+            IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx], argv[vmi]);
         }
         else {
-            IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[vmx], "");
+            IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx], "");
         }
 
     }
     else { // si no hay vmx se saltean los parametros
         leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
+        ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
     }
 
     return 0;
@@ -640,7 +642,7 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
 
 //------------------ EJECUCION ---------------------------------------
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char filevmx[], char filevmi[])
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[], char filevmi[])
 {
     FILE *f;
     char id[6];
@@ -660,7 +662,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
     {
         fread(&ver, sizeof(uint8_t), 1, f); // Leer Version
 
-        if (ver != 1 || ver != 2)
+        if (!(ver == 1 || ver == 2))
         {
             printf("ERROR: Version erronea");
         }
@@ -689,13 +691,20 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             registros[IP] = registros[CS]; // IP igual al registro CS (Inicialmente 0)
         }
         else { // ver == 2
+            int sumatamanos = 0;
             if (tabla_seg[0].tamanio == 0) // no hay param segment;
                 codSegmento = 0;
             else
                 codSegmento = 1;
 
-            fread(&tamCS, 2, 1, f);
+            fread(&tamCS, 2, 1, f); //Code Segment
             tamCS = BigEndianLittleEndian16(tamCS);
+            if (sumatamanos + tamCS >= tamano) {
+                printf("El CS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamCS;
             if (tamCS > 0){
                 if (codSegmento == 0) {
                     tabla_seg[codSegmento].base = 0;
@@ -706,24 +715,89 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                 tabla_seg[codSegmento].tamanio = tamCS;
                 registros[CS] = tabla_seg[codSegmento].base;
                 codSegmento++;
+            } else {
+                printf("No hay Code Segment\n");
+                exit(1);
             }
 
-            fread(&tamDS, 2, 1, f);
+            fread(&tamDS, 2, 1, f); // Data Segment
             tamDS = BigEndianLittleEndian16(tamDS);
+            if (sumatamanos + tamDS >= tamano) {
+                printf("El DS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamDS;
+            if (tamDS > 0){
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamDS;
+                registros[DS] = tabla_seg[codSegmento].base;
+                codSegmento++;
+            }
+            else
+                registro[DS] = -1;
 
-            fread(&tamES, 2, 1, f);
+            fread(&tamES, 2, 1, f); // extra segment
             tamES = BigEndianLittleEndian16(tamES);
+            if (sumatamanos + tamES >= tamano) {
+                printf("El ES se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamES;
+            if (tamES > 0) {
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamES;
+                registros[DS] = tabla_seg[codSegmento].base;
+                codSegmento++;
+            }
+            else
+                registros[ES] = -1;
 
-            fread(&tamSS, 2, 1, f);
+            fread(&tamSS, 2, 1, f); // Stack Segment
             tamSS = BigEndianLittleEndian16(tamSS);
+            if (sumatamanos + tamSS >= tamano) {
+                printf("El SS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamSS;
+            if (tamSS > 0) {
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamSS;
+                registros[DS] = tabla_seg[codSegmento].base;
+                codSegmento++;
+            }
+            else
+                registros[SS] = -1;
 
-            fread(&tamKS, 2, 1, f);
+            fread(&tamKS, 2, 1, f); // Const Segment
             tamKS = BigEndianLittleEndian16(tamKS);
+            if (sumatamanos + tamKS >= tamano) {
+                printf("El KS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamKS;
+            if (tamKS > 0) {
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamKS;
+                registros[KS] = tabla_seg[codSegmento].base;
+                codSegmento++;
+            }
+            else
+                registros[KS] = -1;
 
             fread(&entry_point, 2, 1, f);
             entry_point = BigEndianLittleEndian16(entry_point);
-            // registros[ip] = comienzo del data segment + entry point
+            registros[IP] = registros[CS] + entry_point;
+            // registros[ip] = comienzo del code segment + entry point
 
+            // aca hay que leer el codigo y las constantes
+            fread(&(memoria[registros[CS]), sizeof(int8_t), tamCS, f);
+            if (tamKS > 0) {
+                fread(&(memoria[reegistros[KS]), sizeof(int8_t), tamKS, f);
+            }
         }
     }
     fclose(f);
