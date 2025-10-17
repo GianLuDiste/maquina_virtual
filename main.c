@@ -18,6 +18,8 @@
 #define OPC 4
 #define OP1 5
 #define OP2 6
+#define SP 7
+#define BP 8
 #define EAX 10
 #define EBX 11
 #define ECX 12
@@ -28,6 +30,10 @@
 #define CC 17
 #define CS 26
 #define DS 27
+#define ES 28
+#define SS 29
+#define KS 30
+#define PS 31
 
 #define TIPO_NINGUNO 0
 #define TIPO_REGISTRO 1
@@ -84,13 +90,13 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 
 void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem);
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char* file); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char filevmx[], char filevmi[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
-void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
 
-void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
 
-void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
 
 void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
@@ -164,11 +170,9 @@ int main(int argc, char *argv[])
 
     int32_t registros[TAMANIOREGISTROS];
 
-    int8_t memoria[TAMANIOMEMORIA];
-
     Segmento tabla_seg[NUM_SEG];
 
-    int i,j,cantParametros;
+    int i,j,cantParametros, vmi, vmx;
 
     char * opcional;
 
@@ -188,61 +192,82 @@ int main(int argc, char *argv[])
 
     int32_t basesParametros[50];
 
-    if(strstr(argv[1], ".vmi")!=NULL){
-        //Cargarmos la imagen .vmi
+    if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada arhcivo en el vector de argumentos
+        //Cargamos la imagen .vmi
+        vmx = 0;
+        vmi = 1;
         i=2;
     }else if(strstr(argv[2], ".vmi")!=NULL){
         //Tenemos un .vmx y un .vmi
+        vmx = 1;
+        vmi = 2; //
         i=3;
     }else{
         //Cargamos el .vmx sólo
+        vmx = 1;
+        vmi = 0;
         i=2;
     }
-
-    opcional = strtok(argv[i], "="); //Divide un string en diferentes cadenas separandolas por el segundo parámetro
-
-    if(i<argc && strcmp(opcional, "m")==0){
-        tamano = atoi(strtok(NULL, " ")); //Trae el valor de m y lo pasa a int
-        i++;
+    tamano = TAMANIOMEMORIA;
+    if (i < argc) {
+        opcional = strtok(argv[i], "="); //Divide un string en diferentes cadenas separandolas por el segundo parámetro
+        if(i<argc && strcmp(opcional, "m")==0){
+            tamano = atoi(strtok(NULL, " ")); //Trae el valor de m y lo pasa a int
+            tamano = tamano * 1024;
+            i++;
+        }
     }
+
+    int8_t memoria[tamano];
 
     if(i<argc && strcmp(argv[i], "-d")==0){
         //Dissasembler(memoria, registros, tabla_seg);
         i++;
     }
 
-    //----------- LECTURA DE PARAMETROS ------------------------------
-
-    if(i<argc){
-        //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
-        i++; //Salteamos -p
-
-        base=0;
-        //contLetras=0;
-        cantParametros=0;
-
-        for(;i<argc;i++){
-
-            basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
-
-            for(int j=0; j<=strlen(argv[i]); j++){
-                GuardarEnMemoria(memoria, registros, base+j, argv[i][j]); //Guardamos caracter por caracter (1 byte cada uno)
+    if (vmx) {
+        //----------- LECTURA DE PARAMETROS ------------------------------
+        tabla_seg[0].tamanio = 0;
+        if(i<argc){
+            //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
+            i++; //Salteamos -p
+            base=0;
+            //contLetras=0;
+            cantParametros=0;
+            for(;i<argc;i++){
+                basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
+                for(int j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'
+                    GuardarEnMemoria(memoria, registros, base+j, argv[i][j]); //Guardamos caracter por caracter (1 byte cada uno)
+                }
+                base+=j;
             }
+            //El valor de base en este punto es donde terminan los parametros guardados en memoria
+            for(i=0; i<cantParametros; i++){
+                GuardarEnMemoria(memoria, registros, base, basesParametros[i]);
+                base+=4;
+            }
+            //El valor restante de base va a ser el tamaño del segmento de parámetros
+            tabla_seg[0].base = 0;
+            tabla_seg[0].tamanio = base;
+            registros[PS] = 0;
+        }
+        else {
+            registros[PS] = -1;
+        }
+        //------------------------------------------------------
 
-            base+=j;
+        // iniciar maquina virtual pasando el vmi o no
+        if (vmi) {
+            IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[vmx], argv[vmi]);
+        }
+        else {
+            IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[vmx], "");
         }
 
-        //El valor de base en este punto es donde terminan los parametros guardados en memoria
-
-        for(i=0; i<cantParametros; i++){
-            GuardarEnMemoria(memoria, registros, base, basesParametros[i]);
-            base+=4;
-        }
-
-        //El valor restante de base va a ser el tamaño del segmento de parámetros
     }
-
-    //------------------------------------------------------
+    else { // si no hay vmx se saltean los parametros
+        leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
+    }
 
     return 0;
 }
@@ -615,14 +640,15 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
 
 //------------------ EJECUCION ---------------------------------------
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char file[])
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char filevmx[], char filevmi[])
 {
     FILE *f;
     char id[6];
     int8_t ver;
-    int16_t tamanio;
+    int16_t tamCS, tamDS, tamES, tamSS, tamKS, entry_point;
+    int codSegmento = 0;
 
-    f = fopen(file, "rb");
+    f = fopen(filevmx, "rb");
 
     fread(id, 5, 1, f); // Leer identificador
 
@@ -634,47 +660,84 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
     {
         fread(&ver, sizeof(uint8_t), 1, f); // Leer Version
 
-        if (ver != 1)
+        if (ver != 1 || ver != 2)
         {
             printf("ERROR: Version erronea");
         }
-        else
+        else if (ver == 1)
         {
-            fread(&tamanio, 2, 1, f); // Leer Tamano
+            fread(&tamCS, 2, 1, f); // Leer Tamano
 
-            tamanio = BigEndianLittleEndian16(tamanio); // Pasar Tamano a LittleEndian
+            tamCS = BigEndianLittleEndian16(tamCS); // Pasar Tamano a LittleEndian
 
             registros[CS] = CrearPuntero(0, 0); // Ponemos en 0 el valor de inicio del Code Segment
 
             registros[DS] = CrearPuntero(1, 0); // Ponemos en tamanio el valor de inicio del Data Segment
 
-            fread(memoria, 1, tamanio, f); // Lectura del Archivo en la Memoria
+            fread(memoria, 1, tamCS, f); // Lectura del Archivo en la Memoria
 
             //-- Inicializar tabla de segmentos ---
 
             tabla_seg[0].base = 0;
-            tabla_seg[0].tamanio = tamanio;
+            tabla_seg[0].tamanio = tamCS;
 
-            tabla_seg[1].base = tamanio;
-            tabla_seg[1].tamanio = TAMANIOMEMORIA - tamanio;
+            tabla_seg[1].base = tamCS;
+            tabla_seg[1].tamanio = TAMANIOMEMORIA - tamCS;
 
             //-------------------------------------
 
             registros[IP] = registros[CS]; // IP igual al registro CS (Inicialmente 0)
         }
+        else { // ver == 2
+            if (tabla_seg[0].tamanio == 0) // no hay param segment;
+                codSegmento = 0;
+            else
+                codSegmento = 1;
+
+            fread(&tamCS, 2, 1, f);
+            tamCS = BigEndianLittleEndian16(tamCS);
+            if (tamCS > 0){
+                if (codSegmento == 0) {
+                    tabla_seg[codSegmento].base = 0;
+                }
+                else {
+                    tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                }
+                tabla_seg[codSegmento].tamanio = tamCS;
+                registros[CS] = tabla_seg[codSegmento].base;
+                codSegmento++;
+            }
+
+            fread(&tamDS, 2, 1, f);
+            tamDS = BigEndianLittleEndian16(tamDS);
+
+            fread(&tamES, 2, 1, f);
+            tamES = BigEndianLittleEndian16(tamES);
+
+            fread(&tamSS, 2, 1, f);
+            tamSS = BigEndianLittleEndian16(tamSS);
+
+            fread(&tamKS, 2, 1, f);
+            tamKS = BigEndianLittleEndian16(tamKS);
+
+            fread(&entry_point, 2, 1, f);
+            entry_point = BigEndianLittleEndian16(entry_point);
+            // registros[ip] = comienzo del data segment + entry point
+
+        }
     }
     fclose(f);
 }
 
-void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[])
 {
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
-        leerInstruccion(memoria, registros, tabla_seg); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
+        leerInstruccion(memoria, registros, tabla_seg, filevmi); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
     }
 }
 
-void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
+void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
 {
     uint32_t ip = registros[IP];
     uint8_t byte_de_control = memoria[ip++];
@@ -700,10 +763,10 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
 
     registros[IP] = ip;
 
-    ejecutarInstruccion(memoria, registros, tabla_seg);
+    ejecutarInstruccion(memoria, registros, tabla_seg, filevmi);
 }
 
-void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]) // Busca y ejecuta la función respectiva al código de la función
+void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]) // Busca y ejecuta la función respectiva al código de la función
 {
     uint8_t tipo1, tipo2;
     int32_t valor1, valor2;
