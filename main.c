@@ -44,6 +44,7 @@ typedef struct
 {
     int16_t base;    // Direccion base del segmento
     int16_t tamanio; // Tamanio del segmento
+    char cod[3];
 } Segmento;
 
 void printBits(uint8_t valor); // imprime bit a bit 8 bits, NO FINAL
@@ -154,6 +155,10 @@ void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
+void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor);
+
+void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor);
+
 void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
 void mostrarInstruccion(int8_t memoria[], int32_t * ip);
@@ -180,16 +185,6 @@ int main(int argc, char *argv[])
 
     int16_t base;
 
-    //IniciarMaquinaVirtual(registros, memoria, tabla_seg, argv[1]);
-
-    //ejecutarPrograma(memoria, registros, tabla_seg);
-
-    /*
-    if(argv[1]!=NULL && strcmp(argv[2], "-d")==0){
-        Dissasembler(memoria, registros, tabla_seg);
-    }
-    */
-
     int32_t basesParametros[50];
 
     if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada arhcivo en el vector de argumentos
@@ -215,6 +210,7 @@ int main(int argc, char *argv[])
         if(i<argc && strcmp(opcional, "m")==0){
             tamano = atoi(strtok(NULL, " ")); //Trae el valor de m y lo pasa a int
             tamano = tamano * 1024;
+            printf("%s: Memoria = %d \n", argv[i], tamano);
             i++;
         }
     }
@@ -222,7 +218,8 @@ int main(int argc, char *argv[])
     int8_t memoria[tamano];
 
     if(i<argc && strcmp(argv[i], "-d")==0 && vmx){
-        //Dissasembler(memoria, registros, tabla_seg);
+        printf("%s: disasembler acrivado\n", argv[i]);
+        Dissasembler(memoria, registros, tabla_seg);
         i++;
     }
 
@@ -230,16 +227,19 @@ int main(int argc, char *argv[])
         //----------- LECTURA DE PARAMETROS ------------------------------
         tabla_seg[0].tamanio = 0;
         if(i<argc){
+            printf("%s, P: \n", argv[i]);
             //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
             i++; //Salteamos -p
             base=0;
             //contLetras=0;
             cantParametros=0;
             for(;i<argc;i++){
+                printf("%d: %s \n", i, argv[i]);
                 basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
                 for(int j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'
                     GuardarEnMemoria(memoria, registros, base+j, argv[i][j]); //Guardamos caracter por caracter (1 byte cada uno)
                 }
+
                 base+=j;
             }
             //El valor de base en este punto es donde terminan los parametros guardados en memoria
@@ -250,6 +250,7 @@ int main(int argc, char *argv[])
             //El valor restante de base va a ser el tamaño del segmento de parámetros
             tabla_seg[0].base = 0;
             tabla_seg[0].tamanio = base;
+            strcpy(tabla_seg[0].cod, "PS");
             registros[PS] = tabla_seg[0].base;
         }
         else {
@@ -264,7 +265,7 @@ int main(int argc, char *argv[])
         else {
             IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx], "");
         }
-
+        //ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
     }
     else { // si no hay vmx se saltean los parametros
         leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
@@ -619,26 +620,13 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
 }
 
 
+int obtenerCodSegmento(Segmento tabla_seg[], char cod[]) {
+    int i = 0;
+    while (i < 8 && strcmp(cod, tabla_seg[i].cod) != 0)
+        i++;
+    return i;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+}
 
 //------------------ EJECUCION ---------------------------------------
 
@@ -713,6 +701,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                     tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
                 }
                 tabla_seg[codSegmento].tamanio = tamCS;
+                strcpy(tabla_seg[codSegmento].cod, "CS");
                 registros[CS] = tabla_seg[codSegmento].base;
                 codSegmento++;
             } else {
@@ -731,11 +720,12 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             if (tamDS > 0){
                 tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
                 tabla_seg[codSegmento].tamanio = tamDS;
+                strcpy(tabla_seg[codSegmento].cod, "DS");
                 registros[DS] = tabla_seg[codSegmento].base;
                 codSegmento++;
             }
             else
-                registro[DS] = -1;
+                registros[DS] = -1;
 
             fread(&tamES, 2, 1, f); // extra segment
             tamES = BigEndianLittleEndian16(tamES);
@@ -748,6 +738,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             if (tamES > 0) {
                 tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
                 tabla_seg[codSegmento].tamanio = tamES;
+                strcpy(tabla_seg[codSegmento].cod, "ES");
                 registros[DS] = tabla_seg[codSegmento].base;
                 codSegmento++;
             }
@@ -765,7 +756,9 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             if (tamSS > 0) {
                 tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
                 tabla_seg[codSegmento].tamanio = tamSS;
+                strcpy(tabla_seg[codSegmento].cod, "SS");
                 registros[DS] = tabla_seg[codSegmento].base;
+                registros[SP] = tabla_seg[codSegmento].base + tabla_seg[codSegmento].tamanio;
                 codSegmento++;
             }
             else
@@ -782,6 +775,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             if (tamKS > 0) {
                 tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
                 tabla_seg[codSegmento].tamanio = tamKS;
+                strcpy(tabla_seg[codSegmento].cod, "KS");
                 registros[KS] = tabla_seg[codSegmento].base;
                 codSegmento++;
             }
@@ -794,10 +788,13 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             // registros[ip] = comienzo del code segment + entry point
 
             // aca hay que leer el codigo y las constantes
-            fread(&(memoria[registros[CS]), sizeof(int8_t), tamCS, f);
+            fread(&(memoria[registros[CS]]), sizeof(int8_t), tamCS, f);
             if (tamKS > 0) {
-                fread(&(memoria[reegistros[KS]), sizeof(int8_t), tamKS, f);
+                fread(&(memoria[registros[KS]]), sizeof(int8_t), tamKS, f);
             }
+
+
+            printf("Se leyo correctamente\n");
         }
     }
     fclose(f);
@@ -938,6 +935,12 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         case 0x08: // NOT
             not(memoria, registros, tabla_seg, tipo2, valor2);
             break;
+        case 0x0B: // PUSH
+            push(memoria, registros, tabla_seg, tipo2, valor2);
+            break;
+        case 0x0C: // POP
+            pop(memoria, registros, tabla_seg, tipo2, valor2);
+            break;
         case 0x0F: // STOP
             registros[IP] = 0xFFFFFFFF;
             printf("\nSTOP: Termino la ejecucion\n");
@@ -947,6 +950,50 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             exit(1);
         }
     }
+}
+
+void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
+{
+    int codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    registros[SP] -= 4;
+    if (registros[SP] < tabla_seg[codSegmentoSS].base) { // hay que buscar una forma de conseguir la base de un segmento especifico
+        printf("Stack Overflow, SP se paso de la base del SS\n");
+        exit(1);
+    }
+    else {
+        valor = obtenerValorOperando(valor, tipo, registros, memoria, tabla_seg);
+        GuardarEnMemoria(memoria, registros, registros[SP], valor);
+    }
+}
+
+void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
+{
+    int i, codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");;
+    int32_t aux = 0;
+
+    if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) { // hay que buscar una forma de conseguir la base de un segmento especifico
+        printf("Stack Underflow, no se pudo completar POP \n");
+        exit(1);
+    }
+    else {
+        for (i = 0 ; i < 4 ; i++)
+        {
+            aux |= memoria[registros[SP+i]]
+            aux = aux << (3 - i) * 8;
+        }
+        if (tipo == TIPO_REGISTRO) {
+            registros[valor] = aux;
+        }
+        else if (tipo == TIPO_MEMORIA)
+            GuardarEnMemoria(memoria, registros, valor, aux)
+        else {
+            printf("ERROR: se quiso hacer pop a un inmediato o ninguno\n");
+            exit(1);
+        }
+    }
+
+
+
 }
 
 //---------------------------------------------------------------------------------------
@@ -1559,9 +1606,11 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 }
 
 void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+
+// aca hay que buscar el Code Segment en la tabla de segmentos y recorres el ip ahi,
+//ahora esta mal porque esta hecho con los segmentos arbitrarios
 {
     int32_t ip=tabla_seg[0].base;
-
     while (ip < tabla_seg[0].tamanio && ip != 0xFFFFFFFF)
     {
         mostrarInstruccion(memoria, &ip); // manda a mostrar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
