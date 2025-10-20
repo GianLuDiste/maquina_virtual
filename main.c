@@ -87,11 +87,15 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
 
 int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base); // lee de memoria los 4 bytes empezando de base
 
-void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant); // guarda en memoria 4 bytes empezando de base
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[]); // guarda en memoria 4 bytes empezando de base
 
 void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint32_t tam_memoria, char nombre_archivo[]);
 
 void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem);
+
+void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * argv[]);
+
+void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i);
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[], char filevmi[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
@@ -179,21 +183,25 @@ int main(int argc, char *argv[])
 
     Segmento tabla_seg[NUM_SEG];
 
-    int i,j,cantParametros, vmi, vmx;
+    InicializarMV(registros, tabla_seg, argc, argv);
+
+    return 0;
+}
+
+void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * argv[]){
+
+    int i, vmi, vmx;
 
     char * opcional;
 
     int tamano;
 
-    int16_t base;
-
-    int32_t basesParametros[50];
-
-    if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada arhcivo en el vector de argumentos
+    if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada archivo en el vector de argumentos
         //Cargamos la imagen .vmi
         vmx = 0;
         vmi = 1;
         i=2;
+
     }else if(strstr(argv[2], ".vmi")!=NULL){
         //Tenemos un .vmx y un .vmi
         vmx = 1;
@@ -207,58 +215,34 @@ int main(int argc, char *argv[])
     }
 
     tamano = TAMANIOMEMORIA;
+
     if (i < argc) {
         opcional = strtok(argv[i], "="); //Divide un string en diferentes cadenas separandolas por el segundo parámetro
         if(i<argc && strcmp(opcional, "m")==0){
             tamano = atoi(strtok(NULL, " ")); //Trae el valor de m y lo pasa a int
             tamano = tamano * 1024;
-            printf("%s: Memoria = %d \n", argv[i], tamano);
+            //printf("%s: Memoria = %d \n", argv[i], tamano);
             i++;
         }
     }
 
-    int8_t memoria[tamano];
+    int8_t memoria[tamano];  //Se crea el array de memoria -----------------------------
 
     if(i<argc && strcmp(argv[i], "-d")==0 && vmx){
-        printf("%s: disasembler acrivado\n", argv[i]);
+        //printf("%s: disasembler activado\n", argv[i]);
         Dissasembler(memoria, registros, tabla_seg);
         i++;
     }
 
-    if (vmx) {
-        //----------- LECTURA DE PARAMETROS ------------------------------
-        tabla_seg[0].tamanio = 0;
-        if(i<argc){
-            printf("%s, P: \n", argv[i]);
-            //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
-            i++; //Salteamos -p
-            base=0;
-            //contLetras=0;
-            cantParametros=0;
-            for(;i<argc;i++){
-                printf("%d: %s \n", i, argv[i]); // prueba
-                basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
-                for(int j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'
-                    GuardarEnMemoria(memoria, registros, tabla_seg, base+j, argv[i][j], 1); //Guardamos caracter por caracter (1 byte cada uno)
-                }
-
-                base+=j;
-            }
-            //El valor de base en este punto es donde terminan los parametros guardados en memoria
-            for(i=0; i<cantParametros; i++){
-                GuardarEnMemoria(memoria, registros, tabla_seg,  base, basesParametros[i], 4);
-                base+=4;
-            }
-            //El valor restante de base va a ser el tamaño del segmento de parámetros
-            tabla_seg[0].base = 0;
-            tabla_seg[0].tamanio = base;
-            strcpy(tabla_seg[0].cod, "PS");
-            registros[PS] = tabla_seg[0].base;
+    if(vmx){
+        if(i<argc && strcmp(argv[i], "-p")==0){
+            //printf("SI HAY PARAMETROS\n");
+            LeerParametros(memoria, registros, tabla_seg, argc, argv, i); //Leemos los parámetros y los guardamos en memoria
         }
         else {
-            registros[PS] = -1;
+            //printf("NO HAY PARAMETROS\n");
+            registros[PS] = -1; //No hay parámetros, ponemos -1 en el Registro del Param Segment
         }
-        //------------------------------------------------------
 
         // iniciar maquina virtual pasando el vmi o no
         if (vmi) {
@@ -267,14 +251,57 @@ int main(int argc, char *argv[])
         else {
             IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx], "");
         }
-        //ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
-    }
-    else { // si no hay vmx se saltean los parametros
+        ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
+
+    }else{
+        //Leemos la imagen vmi e iniciamos la ejecución (desde el punto que dejó el vmi al registro[IP])
         leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
         ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
     }
+}
 
-    return 0;
+void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i){
+
+    int j;
+    int16_t base;
+    int32_t basesParametros[50];
+    int cantParametros;
+
+    tabla_seg[0].tamanio = 0;
+    tabla_seg[0].base=0;
+    strcpy(tabla_seg[0].cod, "PS");
+
+     //----------- LECTURA DE PARAMETROS ------------------------------
+        //printf("%s, P: \n", argv[i]);
+            //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
+            i++; //Salteamos -p
+            base=0;
+            //contLetras=0;
+            cantParametros=0;
+            for(;i<argc;i++){
+                //printf("%d: %s \n", i, argv[i]); // prueba
+                basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
+                for(int j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'
+                    //printf("%d", tabla_seg[0].tamanio);
+                    tabla_seg[0].tamanio++;
+                    printf("%s", argv[i][j]);
+                    GuardarEnMemoria(memoria, registros, tabla_seg, base+j, argv[i][j], 1, "PS"); //Guardamos caracter por caracter (1 byte cada uno)
+                }
+                base+=j;
+            }
+
+            //El valor de base en este punto es donde terminan los parametros guardados en memoria
+            for(int i=0; i<cantParametros; i++){
+                tabla_seg[0].tamanio+=4;
+                GuardarEnMemoria(memoria, registros, tabla_seg,  base, basesParametros[i], 4, "PS");
+                base+=4;
+            }
+            //El valor restante de base va a ser el tamaño del segmento de parámetros
+            registros[PS] = tabla_seg[0].base;
+
+            printf("tamanio: %d", tabla_seg[0].tamanio);
+
+    //------------------------------------------------------
 }
 
 //-------- UTILIDADES --------------------------
@@ -519,11 +546,12 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
     return aux;
 }
 
-void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant)
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[])
 { // Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
-    int codSegDS = obtenerCodSegmento(tabla_seg, "DS");
 
-    if (base >= 0 && base >= tabla_seg[codSegDS].base && base + cant <= tabla_seg[codSegDS].base + tabla_seg[codSegDS].tamanio)
+    int codSeg = obtenerCodSegmento(tabla_seg, codSegmento);
+
+    if (base >= 0 && (base >= tabla_seg[codSeg].base) && (base + cant) <= tabla_seg[codSeg].base + tabla_seg[codSeg].tamanio)
     {
         for (int i = 0 ; i < cant ; i ++) {
             memoria[base + i] = (valor >> (3-i)*8 & 0xFF);
@@ -613,10 +641,15 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
 
 int obtenerCodSegmento(Segmento tabla_seg[], char cod[]) {
     int i = 0;
-    while (i < 8 && strcmp(cod, tabla_seg[i].cod) != 0)
+    while (i < NUM_SEG && strcmp(cod, tabla_seg[i].cod) != 0)
         i++;
-    return i;
 
+    if(i==NUM_SEG){
+        printf("Segmento no encontrado\n");
+        exit(1);
+    }
+
+    return i;
 }
 
 //------------------ EJECUCION ---------------------------------------
@@ -971,13 +1004,13 @@ void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t ti
     }
     else {
         valor = obtenerValorOperando(valor, tipo, registros, memoria, tabla_seg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], valor, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], valor, 4, "SS");
     }
 }
 
 void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
 {
-    int i, codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");;
+    int i, codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
     int32_t aux = 0;
 
     if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) { // hay que buscar una forma de conseguir la base de un segmento especifico
@@ -994,7 +1027,7 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
             registros[valor] = aux;
         }
         else if (tipo == TIPO_MEMORIA) // revisar la longitud de valor, si es Long, word o byte
-            GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, 4);
+            GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, 4, "SS");
         else {
             printf("ERROR: se quiso hacer pop a un inmediato o ninguno\n");
             exit(1);
@@ -1019,7 +1052,7 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         // revisar la longitud de valor, si es Long, word o byte
-        GuardarEnMemoria(memoria, registros,tabla_seg, dir_fis, valor2, 4);
+        GuardarEnMemoria(memoria, registros,tabla_seg, dir_fis, valor2, 4, "DS");
     }
     else{
         printf("Error MOV Inmediato o Ninguno a Cualquiera \n");
@@ -1045,7 +1078,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
         // revisar la longitud de valor, si es Long, word o byte
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
          printf("Error ADD Inmediato o Ninguno a Cualquiera \n");
@@ -1072,7 +1105,7 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
         // revisar la longitud de valor, si es Long, word o byte
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error SUB Inmediato o ninguno -= cualquiera \n");
@@ -1100,7 +1133,7 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error MUL Inmediato o ninguno *= cualquiera \n");
@@ -1139,7 +1172,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
             registros[AC] = aux % valor2;
             dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
             // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
         }
         else{
             printf("Error (Inmediato o ninugno) / cualquiera \n");
@@ -1178,7 +1211,7 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 << valor2;
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
@@ -1206,7 +1239,7 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = (uint32_t)valor1 >> valor2;
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
@@ -1236,7 +1269,7 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 >> valor2;
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error: (Ninguno o Inmediato) SAR Cualquiera \n");
@@ -1263,7 +1296,7 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 & valor2;
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
@@ -1292,7 +1325,7 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 | valor2;
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
@@ -1320,7 +1353,7 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = valor1 ^ valor2;
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error inmediato o ninguno ^ cualquiera \n");
@@ -1351,8 +1384,8 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
         valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, valor2, 4);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, valor1, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, valor2, 4, "DS");
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, valor1, 4, "DS");
     }
     else{
         printf("Error SWAP \n");
@@ -1378,7 +1411,7 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0xFFFF0000;
         resultado = resultado | (valor2 & 0x0000FFFF);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error (Inmediato o Ninguno) LDL Cualquiera \n");
@@ -1405,7 +1438,7 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0x0000FFFF;
         resultado = resultado | (valor2 << 16);
         // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
     }
     else{
         printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
@@ -1425,7 +1458,7 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, rand() % valor2, 4);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, rand() % valor2, 4, "DS");
     }
     else{
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
@@ -1452,25 +1485,25 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
                 // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
             case 0x01: // interpreta decimal
                 scanf("%d", &valor);
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4);
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
                 break;
             case 0x02: // interpreta caracteres
                 scanf("%c", &car);
                 scanf("%c", &aux); // si no esta esto, lee el "enter" como otro caracter
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, car, 4);
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, car, 4, "DS");
                 break;
             case 0x04: // interpreta octal
                 scanf("%o", &valor);
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4);
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
                 break;
             case 0x08: // interpreta hexadecimal
                 scanf("%X", &valor);
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4);
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
                 break;
             case 0x10: // interpreta binario
                 scanf("%32s", bin);
                 valor = (int32_t)strtol(bin, NULL, 2); // convierte una serie de caracteres en enteros
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4);
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
                 break;
             default:
                 printf("Modo para leer no valido \n");
@@ -1616,7 +1649,7 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         {
             dir_fis = ProcesarOPMemoria(valor2, registros, tabla_seg);
             // revisar la cantidad de bytes a guardar en memoria
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
         }
         cambiarCC(registros, resultado);
     }
