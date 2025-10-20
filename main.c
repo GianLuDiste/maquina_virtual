@@ -468,16 +468,17 @@ int32_t ExtenderSigno16Bits(int32_t valor)
 // obtenerValorOperando no se puede usar para el operando en el que hay que guardar los datos
 int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[])
 {
+    char codSeg[4];
     int cant;
     uint16_t dir_fis;
-    uint32_t resultado = 0;
+    int32_t resultado = 0;
 
     switch (tipo)
     {
     case TIPO_REGISTRO:
-        resultado = registros[valor & 0x0000001F]; // la mascara es para solamente obtener los ultimos 5 bits
+        resultado = registros[valor & 0x1F]; // la mascara es para solamente obtener los ultimos 5 bits
 
-        switch (getBit(valor, 7) + getBit(valor, 6)) // aplicamos mascara al resultado para simular que leimos solamente el sector de registro que se pedia
+        switch (getBit(valor, 7) * 2 + getBit(valor, 6)) // aplicamos mascara al resultado para simular que leimos solamente el sector de registro que se pedia
         {
             case 1:
                 resultado = resultado & 0x000000FF;
@@ -499,7 +500,8 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
     case TIPO_MEMORIA:
         dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg); // la mascara a valor se aplica en la funcion
         cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
-        resultado = LeerMemoria(memoria, registros, tabla_seg , dir_fis, cant, "DS");
+        copiarRegistro(valor & 0x001F0000, codSeg);
+        resultado = LeerMemoria(memoria, registros, tabla_seg , dir_fis, cant, codSeg);
         break;
     default:
         resultado = 0;
@@ -519,6 +521,8 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
     int16_t desplazamientoPuntero;
     int32_t puntero = registros[codRegistro];
 
+    int cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
+
     LeerPuntero(tabla_seg, puntero, &codSegmento, &desplazamientoPuntero);
 
     if(codSegmento<0 || codSegmento>=NUM_SEG){
@@ -536,8 +540,7 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
 
     registros[LAR] = CrearPuntero(codSegmento, desplazamientoOperando + desplazamientoPuntero); // Se Inicializa el registro LAR
 
-    //REVISAR LA PARTE ALTA DEL MAR
-    registros[MAR] = TAMANIOMEM; // Tamanio estándar de la memoria (por ahora)
+    registros[MAR] = cant;
 
     registros[MAR] = registros[MAR] << 16; // Se guarda la cantidad de bytes de lectura en la parte alta del MAR
 
@@ -577,19 +580,21 @@ void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 
     int codSeg = obtenerCodSegmento(tabla_seg, codSegmento);
 
+    int32_t valorMBR=0;
+
+    int pos = 0;
+
     if (base >= 0 && (base >= tabla_seg[codSeg].base) && (base + cant) <= tabla_seg[codSeg].base + tabla_seg[codSeg].tamanio)
     {
-        for (int i = 0 ; i < cant ; i ++) {
-            memoria[base + i] = (valor >> (3-i)*8 & 0xFF);
+        for (int i = 4-cant ; i < 4 ; i++) {
+
+            //Según la cantidad, se van a guardar los últimos "cant" elementos del valor2 (de izquierda a derecha) en los "cant" bytes desde la base.
+
+            memoria[base + pos] = (valor >> (3-i)*8 & 0xFF);
+            valorMBR = valorMBR << 8 | (valor >> (3-i)*8 & 0xFF);
+            pos++;
         }
-        /*
-        memoria[base] = (valor >> 24) & 0xFF;
-        memoria[base + 1] = (valor >> 16) & 0xFF;
-        memoria[base + 2] = (valor >> 8) & 0xFF;
-        memoria[base + 3] = (valor & 0xFF);
-        esto era antes
-        */
-        registros[MBR] = valor;
+        registros[MBR] = valorMBR;
     }
     else
     {
@@ -720,9 +725,11 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             tabla_seg[0].base = 0;
             tabla_seg[0].tamanio = tamCS;
+            strcpy(tabla_seg[0].cod, "CS");
 
             tabla_seg[1].base = tamCS;
             tabla_seg[1].tamanio = TAMANIOMEMORIA - tamCS; //Como es la version 1 el tamaño de la memoria es una CONSTANTE
+            strcpy(tabla_seg[1].tamanio, "DS");
 
             //-------------------------------------
 
@@ -738,29 +745,6 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                 sumatamanos = tabla_seg[0].tamanio;
                 codSegmento = 1;
             }
-
-            //----------------------- Inicializacion del Const Segment -------------------------
-
-            fread(&tamKS, 2, 1, f); // Const Segment
-            tamKS = BigEndianLittleEndian16(tamKS);
-            if (sumatamanos + tamKS >= tamano) {
-                printf("El KS se excedio el tamano de la memoria\n");
-                exit(1);
-            }
-            else
-                sumatamanos += tamKS;
-            if (tamKS > 0) {
-                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
-                tabla_seg[codSegmento].tamanio = tamKS;
-                strcpy(tabla_seg[codSegmento].cod, "KS");
-
-                registros[KS] = CrearPuntero(codSegmento, 0);
-                codSegmento++;
-            }
-            else
-                registros[KS] = -1;
-
-            //--------------------------------------------------------------------------
 
             //------------- Inicializacion Code Segment ----------------------
 
@@ -859,12 +843,35 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             //------------------------------------------------------------------
 
+            //----------------------- Inicializacion del Const Segment -------------------------
+
+            fread(&tamKS, 2, 1, f); // Const Segment
+            tamKS = BigEndianLittleEndian16(tamKS);
+            if (sumatamanos + tamKS >= tamano) {
+                printf("El KS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamKS;
+            if (tamKS > 0) {
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamKS;
+                strcpy(tabla_seg[codSegmento].cod, "KS");
+
+                registros[KS] = CrearPuntero(codSegmento, 0);
+                codSegmento++;
+            }
+            else
+                registros[KS] = -1;
+
+            //--------------------------------------------------------------------------
+
             //-------------------- Relleno de Segmentos faltantes (para no tener que pasar la cantidad) -------------------
 
-                while(codSegmento<NUM_SEG){
-                    strcpy(tabla_seg[codSegmento].cod,"");
-                    codSegmento++;
-                }
+            while(codSegmento<NUM_SEG){
+                strcpy(tabla_seg[codSegmento].cod," ");
+                codSegmento++;
+            }
 
             //-------------------------------------------------------------------------------------------------------------
 
@@ -1082,16 +1089,21 @@ void GuardarEnRegistro(int32_t registros[], int8_t reg, int32_t valorGuardar) {
     {
         case 1:
             valorGuardar = valorGuardar & 0xFF;
+            registros[reg & 0x1F] = registros[reg & 0x1F] & 0xFFFFFF00;
             break;
         case 2:
             valorGuardar = valorGuardar & 0xFF;
             valorGuardar = valorGuardar << 8;
+            registros[reg & 0x1F] = registros[reg & 0x1F] & 0xFFFF00FF;
             break;
         case 3:
             valorGuardar = valorGuardar & 0xFFFF;
+            registros[reg & 0x1F] = registros[reg & 0x1F] & 0xFFFF0000;
             break;
+        default:
+            registros[reg & 0x1F] = 0;
     }
-    registros[reg & 0x1F] = registros[reg & 0x1F] & valorGuardar;
+    registros[reg & 0x1F] = registros[reg & 0x1F] | valorGuardar;
 }
 
 void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
@@ -1174,7 +1186,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1203,7 +1215,7 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1231,7 +1243,7 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1268,7 +1280,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
         {
             aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
             resultado = aux / valor2;
-            GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+            GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
             registros[AC] = aux % valor2;
         }
         else if (tipo_op1 == TIPO_MEMORIA)
@@ -1309,7 +1321,7 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) << valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1338,7 +1350,7 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) >> valor2;
-        GuardarEnRegistro(registros, (valor & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1368,7 +1380,7 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) >> valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1396,7 +1408,7 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1424,7 +1436,7 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) | valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1453,7 +1465,7 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) ^ valor2;
-        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1489,11 +1501,11 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
     if (tipo_op1 == TIPO_REGISTRO)
     {
         if (tipo_op2 == TIPO_REGISTRO) {
-            GuardarEnRegistro(registros, (valor1 & 0x1F), aux2);
-            GuardarEnRegistro(registros, (valor2 & 0x1F), aux1);
+            GuardarEnRegistro(registros, (valor1 & 0xFF), aux2);
+            GuardarEnRegistro(registros, (valor2 & 0xFF), aux1);
         }
         else if (tipo_op2 == TIPO_MEMORIA) {
-            GuardarEnRegistro(registros, (valor1 & 0x1F), aux2);
+            GuardarEnRegistro(registros, (valor1 & 0xFF), aux2);
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
             copiarRegistro((valor2 & 0x00FF0000), codSeg2);
@@ -1508,7 +1520,7 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
 
         if (tipo_op2 == TIPO_REGISTRO) {
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1);
-            GuardarEnRegistro(registros, (valor2 & 0x1F), aux1);
+            GuardarEnRegistro(registros, (valor2 & 0xFF), aux1);
         }
         else if (tipo_op2 == TIPO_MEMORIA) {
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
