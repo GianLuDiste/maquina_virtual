@@ -85,9 +85,9 @@ int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar
 
 int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]); // devuelve la dirección física de la memoria
 
-int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base); // lee de memoria los 4 bytes empezando de base
+int32_t LeerMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int cant, char codSegmento[]);
 
-void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[]); // guarda en memoria 4 bytes empezando de base
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[]);
 
 void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint32_t tam_memoria, char nombre_archivo[]);
 
@@ -97,7 +97,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
 
 void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i);
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[], char filevmi[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
 
@@ -139,7 +139,7 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
-void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[]);
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
 void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor);
 
@@ -214,8 +214,10 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         i=2;
     }
 
-    tamano = TAMANIOMEMORIA;
+    tamano = TAMANIOMEMORIA; //Memoria por defecto cuando no hay un -m
 
+
+    //Se fija si hay un -m y si existe obtiene el valor de bytes total que va a ocupar la memoria.
     if (i < argc) {
         opcional = strtok(argv[i], "="); //Divide un string en diferentes cadenas separandolas por el segundo parámetro
         if(i<argc && strcmp(opcional, "m")==0){
@@ -228,13 +230,18 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
 
     int8_t memoria[tamano];  //Se crea el array de memoria -----------------------------
 
+
+    //Se fija si hay un -d y si está entonces se ejecuta el Dissasembler.
     if(i<argc && strcmp(argv[i], "-d")==0 && vmx){
         //printf("%s: disasembler activado\n", argv[i]);
         Dissasembler(memoria, registros, tabla_seg);
         i++;
     }
 
+    //Si hay un archivo .vmx tenemos que fijarnos si hay parámetros...
     if(vmx){
+
+        //Chequeamos si hay parámetros...
         if(i<argc && strcmp(argv[i], "-p")==0){
             //printf("SI HAY PARAMETROS\n");
             LeerParametros(memoria, registros, tabla_seg, argc, argv, i); //Leemos los parámetros y los guardamos en memoria
@@ -244,14 +251,13 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
             registros[PS] = -1; //No hay parámetros, ponemos -1 en el Registro del Param Segment
         }
 
-        // iniciar maquina virtual pasando el vmi o no
-        if (vmi) {
-            IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx], argv[vmi]);
+        IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx]);
+
+        if(vmi){
+            ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
+        }else{
+            ejecutarPrograma(memoria, registros, tabla_seg, ""); //No tiene vmi (ignoramos los BREAKPOINTS)
         }
-        else {
-            IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx], "");
-        }
-        ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
 
     }else{
         //Leemos la imagen vmi e iniciamos la ejecución (desde el punto que dejó el vmi al registro[IP])
@@ -270,21 +276,21 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
     tabla_seg[0].tamanio = 0;
     tabla_seg[0].base=0;
     strcpy(tabla_seg[0].cod, "PS");
+    registros[PS] = tabla_seg[0].base; //0x000000
 
      //----------- LECTURA DE PARAMETROS ------------------------------
-        //printf("%s, P: \n", argv[i]);
-            //Si todavía quedan cosas y ya chequeamos "m" y "-d", entonces nos queda -p
+            printf("%s, P: \n", argv[i]);
             i++; //Salteamos -p
+
             base=0;
-            //contLetras=0;
             cantParametros=0;
+
             for(;i<argc;i++){
-                //printf("%d: %s \n", i, argv[i]); // prueba
+                //printf("%d: %s \n", i, argv[i]); // print para mostrar cada parametro
                 basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
-                for(int j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'
-                    //printf("%d", tabla_seg[0].tamanio);
-                    tabla_seg[0].tamanio++;
-                    printf("%s", argv[i][j]);
+                for(j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'. //Vamos caracter a caracter guardando en memoria
+                    tabla_seg[0].tamanio++;  //Se va aumentando el tamaño del Param Segment a medida que se agregan caracteres
+                    //printf("%c", argv[i][j]); //print para ver cada letra que se va guardando
                     GuardarEnMemoria(memoria, registros, tabla_seg, base+j, argv[i][j], 1, "PS"); //Guardamos caracter por caracter (1 byte cada uno)
                 }
                 base+=j;
@@ -296,10 +302,8 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
                 GuardarEnMemoria(memoria, registros, tabla_seg,  base, basesParametros[i], 4, "PS");
                 base+=4;
             }
-            //El valor restante de base va a ser el tamaño del segmento de parámetros
-            registros[PS] = tabla_seg[0].base;
 
-            printf("tamanio: %d", tabla_seg[0].tamanio);
+            //printf("tamanio: %d", tabla_seg[0].tamanio); //print para ver el tamaño final del Param Segment.
 
     //------------------------------------------------------
 }
@@ -330,7 +334,7 @@ int32_t setBit(int32_t valor, int8_t n, int8_t x)
 
 void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento)
 {
-    printBits32(LeerMemoria(memoria, registros, tabla_seg[1].base + desplazamiento * TAMANIOMEM));
+    printBits32(LeerMemoria(memoria, registros, tabla_seg ,tabla_seg[1].base + desplazamiento * TAMANIOMEM, 4, "DS"));
 }
 
 //-------- PRINTS DE BITS ----------------------
@@ -476,7 +480,7 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
         break;
     case TIPO_MEMORIA:
         dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg);
-        resultado = LeerMemoria(memoria, registros, dir_fis);
+        resultado = LeerMemoria(memoria, registros, tabla_seg ,dir_fis, 4, "DS");
         break;
     default:
         resultado = 0;
@@ -522,14 +526,16 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
     return posicion;
 }
 
-int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
+int32_t LeerMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int cant, char codSegmento[]) //cant debe ser menor o igual a 4
 { // Se "para" en la posicion de memoria "base" y lee/concatena los 4 bytes siguientes
     int32_t aux = 0;
     int i;
 
-    if (base >= 0 && base + 3 < TAMANIOMEMORIA)
+    int codSeg = obtenerCodSegmento(tabla_seg, codSegmento);
+
+    if (base >= 0 && (base >= tabla_seg[codSeg].base) && (base + cant) <= tabla_seg[codSeg].base + tabla_seg[codSeg].tamanio)
     {
-        for (i = 0; i < 4; i++)
+        for (i = 0; i < cant; i++)
         {
             aux = aux << 8;
             aux = aux | (uint8_t)memoria[base + i];
@@ -546,8 +552,8 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], int32_t base)
     return aux;
 }
 
-void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[])
-{ // Recibe un valor de 4 bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
+void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[]) //cant debe ser menor o igual a 4
+{ // Recibe un valor de cant bytes y lo guarda en cada byte de memoria a partir de la dirección "base"
 
     int codSeg = obtenerCodSegmento(tabla_seg, codSegmento);
 
@@ -654,7 +660,7 @@ int obtenerCodSegmento(Segmento tabla_seg[], char cod[]) {
 
 //------------------ EJECUCION ---------------------------------------
 
-void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[], char filevmi[])
+void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[])
 {
     FILE *f;
     char id[6];
@@ -696,98 +702,24 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             tabla_seg[0].tamanio = tamCS;
 
             tabla_seg[1].base = tamCS;
-            tabla_seg[1].tamanio = TAMANIOMEMORIA - tamCS;
+            tabla_seg[1].tamanio = TAMANIOMEMORIA - tamCS; //Como es la version 1 el tamaño de la memoria es una CONSTANTE
 
             //-------------------------------------
 
             registros[IP] = registros[CS]; // IP igual al registro CS (Inicialmente 0)
         }
         else { // ver == 2
+
             int sumatamanos = 0;
+
             if (tabla_seg[0].tamanio == 0) // no hay param segment;
                 codSegmento = 0;
-            else
+            else{
+                sumatamanos = tabla_seg[0].tamanio;
                 codSegmento = 1;
-
-            fread(&tamCS, 2, 1, f); //Code Segment
-            tamCS = BigEndianLittleEndian16(tamCS);
-            if (sumatamanos + tamCS >= tamano) {
-                printf("El CS se excedio el tamano de la memoria\n");
-                exit(1);
-            }
-            else
-                sumatamanos += tamCS;
-            if (tamCS > 0){
-                if (codSegmento == 0) {
-                    tabla_seg[codSegmento].base = 0;
-                }
-                else {
-                    tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
-                }
-                tabla_seg[codSegmento].tamanio = tamCS;
-                strcpy(tabla_seg[codSegmento].cod, "CS");
-                // aca hay que poner la base del segmento o un puntero a la tabla de segmento?
-                registros[CS] = tabla_seg[codSegmento].base;
-                codSegmento++;
-            } else {
-                printf("No hay Code Segment\n");
-                exit(1);
             }
 
-            fread(&tamDS, 2, 1, f); // Data Segment
-            tamDS = BigEndianLittleEndian16(tamDS);
-            if (sumatamanos + tamDS >= tamano) {
-                printf("El DS se excedio el tamano de la memoria\n");
-                exit(1);
-            }
-            else
-                sumatamanos += tamDS;
-            if (tamDS > 0){
-                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
-                tabla_seg[codSegmento].tamanio = tamDS;
-                strcpy(tabla_seg[codSegmento].cod, "DS");
-                registros[DS] = tabla_seg[codSegmento].base;
-                codSegmento++;
-            }
-            else
-                registros[DS] = -1;
-
-            fread(&tamES, 2, 1, f); // extra segment
-            tamES = BigEndianLittleEndian16(tamES);
-            if (sumatamanos + tamES >= tamano) {
-                printf("El ES se excedio el tamano de la memoria\n");
-                exit(1);
-            }
-            else
-                sumatamanos += tamES;
-            if (tamES > 0) {
-                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
-                tabla_seg[codSegmento].tamanio = tamES;
-                strcpy(tabla_seg[codSegmento].cod, "ES");
-                registros[DS] = tabla_seg[codSegmento].base;
-                codSegmento++;
-            }
-            else
-                registros[ES] = -1;
-
-            fread(&tamSS, 2, 1, f); // Stack Segment
-            tamSS = BigEndianLittleEndian16(tamSS);
-            if (sumatamanos + tamSS >= tamano) {
-                printf("El SS se excedio el tamano de la memoria\n");
-                exit(1);
-            }
-            else
-                sumatamanos += tamSS;
-            if (tamSS > 0) {
-                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
-                tabla_seg[codSegmento].tamanio = tamSS;
-                strcpy(tabla_seg[codSegmento].cod, "SS");
-                registros[DS] = tabla_seg[codSegmento].base;
-                registros[SP] = tabla_seg[codSegmento].base + tabla_seg[codSegmento].tamanio;
-                codSegmento++;
-            }
-            else
-                registros[SS] = -1;
+            //----------------------- Inicializacion del Const Segment -------------------------
 
             fread(&tamKS, 2, 1, f); // Const Segment
             tamKS = BigEndianLittleEndian16(tamKS);
@@ -801,23 +733,151 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                 tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
                 tabla_seg[codSegmento].tamanio = tamKS;
                 strcpy(tabla_seg[codSegmento].cod, "KS");
-                registros[KS] = tabla_seg[codSegmento].base;
+
+                registros[KS] = CrearPuntero(codSegmento, 0);
                 codSegmento++;
             }
             else
                 registros[KS] = -1;
+
+            //--------------------------------------------------------------------------
+
+            //------------- Inicializacion Code Segment ----------------------
+
+            fread(&tamCS, 2, 1, f); //Code Segment
+            tamCS = BigEndianLittleEndian16(tamCS);
+            if (sumatamanos + tamCS >= tamano) {
+                printf("El CS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamCS;
+
+            //No se pregunta si el tamaño es mayor porque existe si o si.
+
+            tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+            tabla_seg[codSegmento].tamanio = tamCS;
+            strcpy(tabla_seg[codSegmento].cod, "CS");
+
+            // aca hay que poner la base del segmento o un puntero a la tabla de segmento?. Hay que poner un puntero.
+
+            registros[CS] = CrearPuntero(codSegmento, 0);
+            codSegmento++;
+
+            //---------------------------------------------------------------
+
+            //-------------- Inicializacion del Data Segment -------------------
+
+            fread(&tamDS, 2, 1, f); // Data Segment
+            tamDS = BigEndianLittleEndian16(tamDS);
+            if (sumatamanos + tamDS >= tamano) {
+                printf("El DS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamDS;
+
+            if (tamDS > 0){
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamDS;
+                strcpy(tabla_seg[codSegmento].cod, "DS");
+
+                registros[DS] = CrearPuntero(codSegmento, 0);
+                codSegmento++;
+            }
+            else
+                registros[DS] = -1;
+
+            //-------------------------------------------------------------------
+
+            //--------------- Inicializacion del Extra Segment -------------------
+
+            fread(&tamES, 2, 1, f); // extra segment
+            tamES = BigEndianLittleEndian16(tamES);
+
+            if (sumatamanos + tamES >= tamano) {
+                printf("El ES se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamES;
+            if (tamES > 0) {
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamES;
+                strcpy(tabla_seg[codSegmento].cod, "ES");
+
+                registros[ES] = CrearPuntero(codSegmento, 0);
+                codSegmento++;
+            }
+            else
+                registros[ES] = -1;
+
+            //-------------------------------------------------------------------
+
+            //--------------- Inicializacion del Stack Segment -------------------
+
+            fread(&tamSS, 2, 1, f); // Stack Segment
+            tamSS = BigEndianLittleEndian16(tamSS);
+
+            if (sumatamanos + tamSS >= tamano) {
+                printf("El SS se excedio el tamano de la memoria\n");
+                exit(1);
+            }
+            else
+                sumatamanos += tamSS;
+
+            //No se chequea que tengo tamaño > 0 porque siempre está presente. (Al igual que el code segment)
+
+                tabla_seg[codSegmento].base = tabla_seg[codSegmento - 1].base + tabla_seg[codSegmento - 1].tamanio;
+                tabla_seg[codSegmento].tamanio = tamSS;
+                strcpy(tabla_seg[codSegmento].cod, "SS");
+
+                registros[SP] =  CrearPuntero(tabla_seg[codSegmento].base + tabla_seg[codSegmento].tamanio, 0);
+
+                registros[SS] = CrearPuntero(codSegmento, 0);
+                codSegmento++;
+
+            //------------------------------------------------------------------
+
+            //-------------------- Relleno de Segmentos faltantes (para no tener que pasar la cantidad) -------------------
+
+                while(codSegmento<NUM_SEG){
+                    strcpy(tabla_seg[codSegmento].cod,"");
+                    codSegmento++;
+                }
+
+            //-------------------------------------------------------------------------------------------------------------
+
+            //--------------------- Lectura del Entry Point ----------------------------
 
             fread(&entry_point, 2, 1, f);
             entry_point = BigEndianLittleEndian16(entry_point);
             registros[IP] = registros[CS] + entry_point;
             // registros[ip] = comienzo del code segment + entry point
 
-            // aca hay que leer el codigo y las constantes
-            fread(&(memoria[registros[CS]]), sizeof(int8_t), tamCS, f);
+            //-------------------------------------------------------------------------
+
+
+            //------------------- Lectura del código ------------------------
+
+            int codCS = obtenerCodSegmento(tabla_seg, "CS");
+
+            fread(&(memoria[tabla_seg[codCS].base]), sizeof(int8_t), tamCS, f); //A partir de la base de CS se guarda todo el código
+
+            //---------------------------------------------------------------
+
+            //------------------- Lectura de las constantes ------------------
+
             if (tamKS > 0) {
-                fread(&(memoria[registros[KS]]), sizeof(int8_t), tamKS, f);
+
+                int codKS = obtenerCodSegmento(tabla_seg, "KS");
+
+                fread(&(memoria[tabla_seg[codKS].base]), sizeof(int8_t), tamKS, f); //A partir de la base de KS se guardan todas las constantes.
             }
 
+            //----------------------------------------------------------------
+
+            //Quizás faltaría poner los parámetros en el Stack?
 
             printf("Se leyo correctamente\n");
         }
@@ -1026,7 +1086,7 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
         if (tipo == TIPO_REGISTRO) {
             registros[valor] = aux;
         }
-        else if (tipo == TIPO_MEMORIA) // revisar la longitud de valor, si es Long, word o byte
+        else if (tipo == TIPO_MEMORIA) // revisar la longitud de valor, si es Long, word o byte. - En la pila todos son de 4 bytes.
             GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, 4, "SS");
         else {
             printf("ERROR: se quiso hacer pop a un inmediato o ninguno\n");
@@ -1514,7 +1574,7 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
     }
 }
 
-void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[])
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
 {
     int i;
     int32_t valor;
@@ -1524,7 +1584,7 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
     }else {
         for (i = 0; i < cantidad; i++)
         {
-        valor = LeerMemoria(memoria, registros, dir_fis + i * tamano);
+        valor = LeerMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, 4, "DS");
 
         printf("[%04X]: ", dir_fis + i * tamano);
         if (getBit(modo, 0) == 1)
@@ -1564,7 +1624,7 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
         read(dir_fis, cantidad, tamano, modo, memoria, registros, tabla_seg);
         break;
     case 0x2: // Escritura
-        write(dir_fis, cantidad, tamano, modo, memoria, registros);
+        write(dir_fis, cantidad,tamano, modo, memoria, registros, tabla_seg);
         break;
     default:
         printf("Modo para el SYS no valido \n");
