@@ -8,7 +8,7 @@
 #define TAMANIOMEMORIA 16384
 #define TAMANIOREGISTROS 32
 #define TAMANIOREG 4
-#define TAMANIOMEM 4
+#define TAMANIOCELDA 4
 #define NUM_SEG 8
 
 #define LAR 0
@@ -97,7 +97,7 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
 
 void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * argv[]);
 
-void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i);
+void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i, uint32_t *punteroBaseParametros, int *cantParametros);
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
@@ -192,11 +192,11 @@ int main(int argc, char *argv[])
 
 void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * argv[]){
 
-    int i, vmi, vmx;
+    int i, vmi, vmx, tamano, cantParametros;
 
     char * opcional;
 
-    int tamano;
+    int32_t basePunteros;
 
     if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada archivo en el vector de argumentos
         //Cargamos la imagen .vmi
@@ -245,7 +245,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         //Chequeamos si hay parámetros...
         if(i<argc && strcmp(argv[i], "-p")==0){
             //printf("SI HAY PARAMETROS\n");
-            LeerParametros(memoria, registros, tabla_seg, argc, argv, i); //Leemos los parámetros y los guardamos en memoria
+            LeerParametros(memoria, registros, tabla_seg, argc, argv, i, &basePunteros, &cantParametros); //Leemos los parámetros y los guardamos en memoria
         }
         else {
             //printf("NO HAY PARAMETROS\n");
@@ -253,6 +253,24 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
 
         IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx]);
+
+        int codseg = obtenerCodSegmento(tabla_seg, "SS");
+
+        if (strcmp(tabla_seg[0].cod, "PS") == 0) {
+            registros[SP] -= 4;
+            int32_t puntero = CrearPuntero(obtenerCodSegmento(tabla_seg, "PS"), basePunteros);
+            GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], puntero, 4, "SS");
+            registros[SP] -= 4;
+            GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], cantParametros, 4, "SS");
+        }
+        else {
+            registros[SP] -= 4;
+            GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], 0xFFFFFFFF, 4, "SS");
+            registros[SP] -= 4;
+            GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], 0, 4, "SS");
+        }
+
+
 
         if(vmi){
             ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
@@ -267,12 +285,11 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
     }
 }
 
-void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i){
+void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] , int argc, char * argv[], int i, uint32_t *punteroBaseParametros, int *cantParametros){
 
     int j;
     int16_t base;
     int32_t basesParametros[50];
-    int cantParametros;
 
     tabla_seg[0].tamanio = 0;
     tabla_seg[0].base=0;
@@ -284,11 +301,12 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
             i++; //Salteamos -p
 
             base=0;
-            cantParametros=0;
+            *cantParametros=0;
 
             for(;i<argc;i++){
                 //printf("%d: %s \n", i, argv[i]); // print para mostrar cada parametro
-                basesParametros[cantParametros++]=base; //Guardamos punteros a cada palabra
+                basesParametros[*cantParametros]=base; //Guardamos punteros a cada palabra
+                *cantParametros += 1;
                 for(j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'. //Vamos caracter a caracter guardando en memoria
                     tabla_seg[0].tamanio++;  //Se va aumentando el tamaño del Param Segment a medida que se agregan caracteres
                     //printf("%c", argv[i][j]); //print para ver cada letra que se va guardando
@@ -297,8 +315,10 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
                 base+=j;
             }
 
+            *punteroBaseParametros = base;
+
             //El valor de base en este punto es donde terminan los parametros guardados en memoria
-            for(int i=0; i<cantParametros; i++){
+            for(int i=0; i<*cantParametros; i++){
                 tabla_seg[0].tamanio+=4;
                 GuardarEnMemoria(memoria, registros, tabla_seg,  base, basesParametros[i], 4, "PS");
                 base+=4;
@@ -335,7 +355,7 @@ int32_t setBit(int32_t valor, int8_t n, int8_t x)
 
 void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento)
 {
-    printBits32(LeerMemoria(memoria, registros, tabla_seg ,tabla_seg[1].base + desplazamiento * TAMANIOMEM, 4, "DS"));
+    printBits32(LeerMemoria(memoria, registros, tabla_seg ,tabla_seg[1].base + desplazamiento * TAMANIOCELDA, 4, "DS"));
 }
 
 //-------- PRINTS DE BITS ----------------------
@@ -415,7 +435,7 @@ void LeerPuntero(Segmento tabla_seg[], int32_t puntero, int16_t *codSegmento, in
     *codSegmento = (puntero & 0xFFFF0000) >> 16;
     *desplazamiento = (puntero & 0xFFFF);
 
-    if((*codSegmento<0) || (*codSegmento>=NUM_SEG) || (tabla_seg[*codSegmento].base+*desplazamiento*TAMANIOMEM<tabla_seg[*codSegmento].base) || (tabla_seg[*codSegmento].base+*desplazamiento*TAMANIOMEM>tabla_seg[*codSegmento].base + tabla_seg[*codSegmento].tamanio)){
+    if((*codSegmento<0) || (*codSegmento>=NUM_SEG) || (tabla_seg[*codSegmento].base+*desplazamiento*TAMANIOCELDA<tabla_seg[*codSegmento].base) || (tabla_seg[*codSegmento].base+*desplazamiento*TAMANIOCELDA>tabla_seg[*codSegmento].base + tabla_seg[*codSegmento].tamanio)){
         printf("ERROR: Fallo de segmento");
     }
 }
@@ -729,7 +749,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             tabla_seg[1].base = tamCS;
             tabla_seg[1].tamanio = TAMANIOMEMORIA - tamCS; //Como es la version 1 el tamaño de la memoria es una CONSTANTE
-            strcpy(tabla_seg[1].tamanio, "DS");
+            strcpy(tabla_seg[1].cod, "DS");
 
             //-------------------------------------
 
@@ -1139,7 +1159,7 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
         if (tipo == TIPO_REGISTRO)
             GuardarEnRegistro(registros, (valor & 0xFF), aux);
         else if (tipo == TIPO_MEMORIA) {
-            copiarRegistro(valor & 0x001F0000, seg);
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
             cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
             GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, cant, seg);
         }
@@ -1193,7 +1213,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
         cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1222,7 +1242,7 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1250,7 +1270,7 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1266,6 +1286,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
 {
     int16_t dir_fis;
     int32_t resultado, aux;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1290,7 +1311,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
             registros[AC] = aux % valor2;
             dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
             int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-            copiarRegistro((valor1 & 0x00FF0000), codSeg);
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
         }
         else{
@@ -1315,6 +1336,7 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1329,14 +1351,14 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux << valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
         exit(1);
     }
-
+a
     cambiarCC(registros, resultado);
 }
 
@@ -1344,13 +1366,14 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
         resultado = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) >> valor2;
-        GuardarEnRegistro(registros, (valor & 0xFF), resultado);
+        GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
@@ -1358,7 +1381,7 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         uint32_t aux = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux >> valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1374,6 +1397,7 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1388,7 +1412,7 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux >> valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1402,6 +1426,7 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1416,7 +1441,7 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux & valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1430,6 +1455,7 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1444,7 +1470,7 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux | valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1459,6 +1485,7 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1473,7 +1500,7 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux ^ valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
@@ -1508,7 +1535,7 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
             GuardarEnRegistro(registros, (valor1 & 0xFF), aux2);
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor2 & 0x00FF0000), codSeg2);
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant, codSeg2);
         }
     }
@@ -1525,8 +1552,8 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
         else if (tipo_op2 == TIPO_MEMORIA) {
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant2 = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor2 & 0x00FF0000), codSeg2);
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1)
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant2, codSeg2);
         }
     }
@@ -1536,20 +1563,25 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        registros[valor1] = registros[valor1] & 0xFFFF0000;
-        registros[valor1] = registros[valor1] | valor2;
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        aux = aux & 0xFFFF0000;
+        resultado = aux | (valor2 & 0x0000FFFF);
+        GuardarEnRegistro(registros, valor1 & 0xFF, resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0xFFFF0000;
         resultado = resultado | (valor2 & 0x0000FFFF);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error (Inmediato o Ninguno) LDL Cualquiera \n");
@@ -1557,6 +1589,8 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
 
 }
+
+// preguntar si se puede hacer LDL y LDH sobre los registros "cortos"
 
 void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
@@ -1567,16 +1601,19 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        registros[valor1] = registros[valor1] & 0x0000FFFF;
-        registros[valor1] = registros[valor1] | (valor2 << 16);
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        aux = aux & 0x0000FFFF;
+        resultado = aux | (valor2 & 0xFFFF0000);
+        GuardarEnRegistro(registros, valor1 & 0xFF, resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0x0000FFFF;
-        resultado = resultado | (valor2 << 16);
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        resultado = resultado | (valor2 & 0xFFFF0000);
+        int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
@@ -1588,15 +1625,18 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
     int16_t dir_fis;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
-        registros[valor1] = rand() % valor2;
+        GuardarEnRegistro(registros, valor1 & 0xFF, rand() % valor2);
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, rand() % valor2, 4, "DS");
+        int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
+        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, rand() % valor2, cant, codSeg);
     }
     else{
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
@@ -1776,18 +1816,20 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     uint32_t bit;
     int32_t resultado = 0;
+    char codSeg[4];
 
     if (tipo_op2 != TIPO_INMEDIATO && tipo_op2 != TIPO_NINGUNO)
     {
         resultado = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
         resultado = ~resultado;
         if (tipo_op2 == TIPO_REGISTRO)
-            registros[valor2] = resultado;
+            GuardarEnRegistro(registros, valor2 & 0xFF, resultado);
         else
         {
             dir_fis = ProcesarOPMemoria(valor2, registros, tabla_seg);
-            // revisar la cantidad de bytes a guardar en memoria
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+            int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
         }
         cambiarCC(registros, resultado);
     }
