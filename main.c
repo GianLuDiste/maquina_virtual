@@ -1164,22 +1164,25 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
+    char codSeg[4];
+    int cant;
     int16_t dir_fis;
-    int32_t resultado = 0;
+    int32_t aux, resultado = 0;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] + valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
-        // revisar la longitud de valor, si es Long, word o byte
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
          printf("Error ADD Inmediato o Ninguno a Cualquiera \n");
@@ -1191,6 +1194,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
+    char codSeg[4];
     int16_t dir_fis;
     int32_t resultado = 0;
 
@@ -1198,27 +1202,27 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] - valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
-        // revisar la longitud de valor, si es Long, word o byte
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error SUB Inmediato o ninguno -= cualquiera \n");
         exit(1);
     }
-
-
     cambiarCC(registros, resultado);
 }
 
 void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
+    char codSeg[4];
     int16_t dir_fis;
     int32_t resultado = 0;
 
@@ -1226,15 +1230,16 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] * valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error MUL Inmediato o ninguno *= cualquiera \n");
@@ -1263,7 +1268,7 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
         {
             aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
             resultado = aux / valor2;
-            registros[valor1] = resultado;
+            GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
             registros[AC] = aux % valor2;
         }
         else if (tipo_op1 == TIPO_MEMORIA)
@@ -1272,14 +1277,14 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
             resultado = aux / valor2;
             registros[AC] = aux % valor2;
             dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-            // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+            int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+            copiarRegistro((valor1 & 0x00FF0000), codSeg);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
         }
         else{
             printf("Error (Inmediato o ninugno) / cualquiera \n");
             exit(1);
         }
-
         cambiarCC(registros, resultado);
     }
 }
@@ -1303,16 +1308,17 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] << valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) << valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = valor1 << valor2;
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = aux << valor2;
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
@@ -1331,22 +1337,22 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = (uint32_t)registros[valor1] >> valor2;
-        registros[valor1] = resultado;
+        resultado = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) >> valor2;
+        GuardarEnRegistro(registros, (valor & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = (uint32_t)valor1 >> valor2;
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        uint32_t aux = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = aux >> valor2;
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
         exit(1);
     }
-
     cambiarCC(registros, resultado);
 }
 
@@ -1361,22 +1367,22 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] >> valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) >> valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = valor1 >> valor2;
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = aux >> valor2;
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error: (Ninguno o Inmediato) SAR Cualquiera \n");
         exit(1);
     }
-
     cambiarCC(registros, resultado);
 }
 
@@ -1389,22 +1395,22 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] & valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = valor1 & valor2;
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = aux & valor2;
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
         exit(1);
     }
-
-
     cambiarCC(registros, resultado);
 }
 
@@ -1417,16 +1423,17 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] | valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) | valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = valor1 | valor2;
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = aux | valor2;
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
         printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
@@ -1445,54 +1452,72 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = registros[valor1] ^ valor2;
-        registros[valor1] = resultado;
+        resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) ^ valor2;
+        GuardarEnRegistro(registros, (valor1 & 0x1F), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        resultado = valor1 ^ valor2;
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, 4, "DS");
+        int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        resultado = aux ^ valor2;
+        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x00FF0000), codSeg);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
     else{
-        printf("Error inmediato o ninguno ^ cualquiera \n");
+        printf("Error inmediato o ninguno xor cualquiera \n");
         exit(1);
     }
-
-
     cambiarCC(registros, resultado);
 }
 
 void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
+    char codSeg1[4], codSeg2[4];
     int16_t dir_fis1, dir_fis2;
-    int32_t vaux;
+    int32_t aux1, aux2;
 
-    if (tipo_op1 == TIPO_REGISTRO)
-    {
-        vaux = registros[valor2];
-        registros[valor2] = registros[valor1];
-        registros[valor1] = vaux;
+    if ((tipo_op1 == TIPO_REGISTRO || tipo_op1 == TIPO_MEMORIA) && (tipo_op2 == TIPO_REGISTRO || tipo_op2 == TIPO_MEMORIA)){
+        aux1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+        aux2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
     }
-    else if (tipo_op1 == TIPO_MEMORIA)
-    {
-        dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
-        dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
-
-        valor1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
-        valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
-
-        // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, valor2, 4, "DS");
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, valor1, 4, "DS");
-    }
-    else{
+    else {
         printf("Error SWAP \n");
         exit(1);
     }
 
+    if (tipo_op1 == TIPO_REGISTRO)
+    {
+        if (tipo_op2 == TIPO_REGISTRO) {
+            GuardarEnRegistro(registros, (valor1 & 0x1F), aux2);
+            GuardarEnRegistro(registros, (valor2 & 0x1F), aux1);
+        }
+        else if (tipo_op2 == TIPO_MEMORIA) {
+            GuardarEnRegistro(registros, (valor1 & 0x1F), aux2);
+            dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+            int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
+            copiarRegistro((valor2 & 0x00FF0000), codSeg2);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant, codSeg2);
+        }
+    }
+    else if (tipo_op1 == TIPO_MEMORIA)
+    {
+        dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
+        int cant1 = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+        copiarRegistro((valor1 & 0x1F), codSeg1);
+
+        if (tipo_op2 == TIPO_REGISTRO) {
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1);
+            GuardarEnRegistro(registros, (valor2 & 0x1F), aux1);
+        }
+        else if (tipo_op2 == TIPO_MEMORIA) {
+            dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
+            int cant2 = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
+            copiarRegistro((valor2 & 0x00FF0000), codSeg2);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1)
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant2, codSeg2);
+        }
+    }
 }
 
 void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
@@ -1867,6 +1892,12 @@ void copiarRegistro(uint32_t reg, char registro[]){
         case OP2:
             strcpy(registro, "OP2");
             break;
+        case SP:
+            strcpy(registro, "SP");
+            break;
+        case BP:
+            strcpy(registro, "BP");
+            break;
         case EAX:
             strcpy(registro, "EAX");
             break;
@@ -1897,7 +1928,20 @@ void copiarRegistro(uint32_t reg, char registro[]){
         case DS:
             strcpy(registro, "DS");
             break;
-        default: strcpy(registro, "");
+        case ES:
+            strcpy(registro, "ES");
+            break;
+        case SS:
+            strcpy(registro, "SS");
+            break;
+        case KS:
+            strcpy(registro, "KS");
+            break;
+        case PS:
+            strcpy(registro, "PS");
+            break;
+        default:
+            strcpy(registro, "");
     }
 }
 
