@@ -89,6 +89,8 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[],
 
 void GuardarEnMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int32_t valor, int cant, char codSegmento[]);
 
+void GuardarEnRegistro(int32_t registros[], int8_t reg, int32_t valorGuardar);
+
 void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint32_t tam_memoria, char nombre_archivo[]);
 
 void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem);
@@ -215,7 +217,6 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
     }
 
     tamano = TAMANIOMEMORIA; //Memoria por defecto cuando no hay un -m
-
 
     //Se fija si hay un -m y si existe obtiene el valor de bytes total que va a ocupar la memoria.
     if (i < argc) {
@@ -467,20 +468,38 @@ int32_t ExtenderSigno16Bits(int32_t valor)
 // obtenerValorOperando no se puede usar para el operando en el que hay que guardar los datos
 int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[])
 {
+    int cant;
     uint16_t dir_fis;
     uint32_t resultado = 0;
 
     switch (tipo)
     {
     case TIPO_REGISTRO:
-        resultado = registros[valor];
+        resultado = registros[valor & 0x0000001F]; // la mascara es para solamente obtener los ultimos 5 bits
+
+        switch (getBit(valor, 7) + getBit(valor, 6)) // aplicamos mascara al resultado para simular que leimos solamente el sector de registro que se pedia
+        {
+            case 1:
+                resultado = resultado & 0x000000FF;
+                break;
+            case 2:
+                resultado = resultado & 0x0000FF00;
+                break;
+            case 3:
+                resultado = resultado & 0x0000FFFF;
+                break;
+            default:
+                resultado = resultado & 0xFFFFFFFF;
+        }
+
         break;
     case TIPO_INMEDIATO:
         resultado = ExtenderSigno16Bits(valor);
         break;
     case TIPO_MEMORIA:
-        dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg);
-        resultado = LeerMemoria(memoria, registros, tabla_seg ,dir_fis, 4, "DS");
+        dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg); // la mascara a valor se aplica en la funcion
+        cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
+        resultado = LeerMemoria(memoria, registros, tabla_seg , dir_fis, cant, "DS");
         break;
     default:
         resultado = 0;
@@ -494,7 +513,7 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
 
 int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg[]) // Retorna la dirección física en memoria donde tiene que guardar o leer
 {
-    int8_t codRegistro = (valor & 0x00FF0000) >> 16;
+    int8_t codRegistro = (valor & 0x001F0000) >> 16;
     int16_t desplazamientoOperando = (valor & 0x0000FFFF);
     int16_t codSegmento;
     int16_t desplazamientoPuntero;
@@ -517,6 +536,7 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
 
     registros[LAR] = CrearPuntero(codSegmento, desplazamientoOperando + desplazamientoPuntero); // Se Inicializa el registro LAR
 
+    //REVISAR LA PARTE ALTA DEL MAR
     registros[MAR] = TAMANIOMEM; // Tamanio estándar de la memoria (por ahora)
 
     registros[MAR] = registros[MAR] << 16; // Se guarda la cantidad de bytes de lectura en la parte alta del MAR
@@ -527,7 +547,7 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
 }
 
 int32_t LeerMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int cant, char codSegmento[]) //cant debe ser menor o igual a 4
-{ // Se "para" en la posicion de memoria "base" y lee/concatena los 4 bytes siguientes
+{ // Se "para" en la posicion de memoria "base" y lee/concatena los 'cant' bytes siguientes
     int32_t aux = 0;
     int i;
 
@@ -592,7 +612,7 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
         exit(1);
     }
 
-    fwrite(id, sizeof(char), 5, arch); // escribo el identificador
+    fwrite(id, sizeof(uint8_t), 5, arch); // escribo el identificador
     fwrite(&version, sizeof(uint8_t), 1, arch); // escribo la version
     fwrite(&tam_Kib, sizeof(uint16_t), 1, arch); // escribo el tamano de memoria en Kib
 
@@ -1054,11 +1074,31 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
     }
 }
 
+void GuardarEnRegistro(int32_t registros[], int8_t reg, int32_t valorGuardar) {
+    int sector;
+
+    sector = getBit(reg, 7) * 2 + getBit(reg, 6);
+    switch (sector)
+    {
+        case 1:
+            valorGuardar = valorGuardar & 0xFF;
+            break;
+        case 2:
+            valorGuardar = valorGuardar & 0xFF;
+            valorGuardar = valorGuardar << 8;
+            break;
+        case 3:
+            valorGuardar = valorGuardar & 0xFFFF;
+            break;
+    }
+    registros[reg & 0x1F] = registros[reg & 0x1F] & valorGuardar;
+}
+
 void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
 {
     int codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
     registros[SP] -= 4;
-    if (registros[SP] < tabla_seg[codSegmentoSS].base) { // hay que buscar una forma de conseguir la base de un segmento especifico
+    if (registros[SP] < tabla_seg[codSegmentoSS].base) {
         printf("Stack Overflow, SP se paso de la base del SS\n");
         exit(1);
     }
@@ -1070,10 +1110,11 @@ void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t ti
 
 void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
 {
-    int i, codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int i, sector, cant, codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
     int32_t aux = 0;
+    char seg[3];
 
-    if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) { // hay que buscar una forma de conseguir la base de un segmento especifico
+    if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
         printf("Stack Underflow, no se pudo completar POP \n");
         exit(1);
     }
@@ -1083,19 +1124,19 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
             aux |= memoria[registros[SP+i]];
             aux = aux << (3 - i) * 8;
         }
-        if (tipo == TIPO_REGISTRO) {
-            registros[valor] = aux;
+        if (tipo == TIPO_REGISTRO)
+            GuardarEnRegistro(registros, (valor & 0xFF), aux);
+        else if (tipo == TIPO_MEMORIA) {
+            copiarRegistro(valor & 0x001F0000, seg);
+            cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
+            GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, cant, seg);
         }
-        else if (tipo == TIPO_MEMORIA) // revisar la longitud de valor, si es Long, word o byte. - En la pila todos son de 4 bytes.
-            GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, 4, "SS");
         else {
             printf("ERROR: se quiso hacer pop a un inmediato o ninguno\n");
             exit(1);
         }
+        registros[SP] += 4;
     }
-
-
-
 }
 
 //---------------------------------------------------------------------------------------
@@ -1107,7 +1148,7 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
-        registros[valor1] = valor2;
+        GuardarEnRegistro(registros, (valor1 & 0xFF), valor2);
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
