@@ -139,9 +139,9 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
-void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char codSeg[]);
 
-void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char codSeg[]);
 
 void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor);
 
@@ -192,11 +192,13 @@ int main(int argc, char *argv[])
 
 void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * argv[]){
 
-    int i, vmi, vmx, tamano, cantParametros;
+    int i, vmi, vmx, cantParametros;
+
+    uint32_t tamano;
 
     char * opcional;
 
-    int32_t basePunteros;
+    uint32_t basePunteros;
 
     if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada archivo en el vector de argumentos
         //Cargamos la imagen .vmi
@@ -253,8 +255,6 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
 
         IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx]);
-
-        int codseg = obtenerCodSegmento(tabla_seg, "SS");
 
         if (strcmp(tabla_seg[0].cod, "PS") == 0) {
             registros[SP] -= 4;
@@ -594,7 +594,7 @@ int32_t LeerMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[],
     if (base >= 0 && (base >= tabla_seg[codSeg].base) && (base + cant) <= tabla_seg[codSeg].base + tabla_seg[codSeg].tamanio)
     {
         //Se fija si el primer bit a leer es 1 o 0 y dependiendo de su signo el resultado va a ser negativo o no (Se inicializa en 0 para arrastrar 0s y en 1 para arrastrar 1s)
-        if(getBit(memoria[base]), 7) == 1){
+        if(getBit(memoria[base], 7) == 1){
             aux=-1;
         }else{
             aux=0;
@@ -1150,7 +1150,8 @@ void GuardarEnRegistro(int32_t registros[], int8_t reg, int32_t valorGuardar) {
 
 void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
 {
-    int codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int16_t codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int16_t desplazamiento;
     registros[SP] -= 4;
     if (registros[SP] < tabla_seg[codSegmentoSS].base) {
         printf("Stack Overflow, SP se paso de la base del SS\n");
@@ -1158,13 +1159,19 @@ void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t ti
     }
     else {
         valor = obtenerValorOperando(valor, tipo, registros, memoria, tabla_seg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], valor, 4, "SS");
+
+        LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
+
+        GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base+desplazamiento, valor, 4, "SS");
     }
 }
 
 void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor)
 {
-    int i, sector, cant, codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int cant;
+    int16_t codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int16_t desplazamiento;
+
     int32_t aux = 0;
     char seg[3];
 
@@ -1173,15 +1180,22 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
         exit(1);
     }
     else {
+        /*
         for (i = 0 ; i < 4 ; i++)
         {
             aux |= memoria[registros[SP+i]];
             aux = aux << (3 - i) * 8;
         }
+        */
+
+        LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
+
+        aux = LeerMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base + desplazamiento, 4, "SS");
+
         if (tipo == TIPO_REGISTRO)
             GuardarEnRegistro(registros, (valor & 0xFF), aux);
         else if (tipo == TIPO_MEMORIA) {
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+            copiarRegistro((valor & 0x001F0000) >> 16, seg);
             cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
             GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, cant, seg);
         }
@@ -1221,7 +1235,7 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     char codSeg[4];
     int cant;
     int16_t dir_fis;
-    int32_t aux, resultado = 0;
+    int32_t resultado = 0;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1389,6 +1403,7 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int32_t resultado;
     char codSeg[4];
     int cant;
+    uint32_t aux;
 
     int32_t mascara;
 
@@ -1588,7 +1603,7 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
             GuardarEnRegistro(registros, (valor1 & 0xFF), aux2);
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg2);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant, codSeg2);
         }
     }
@@ -1605,7 +1620,7 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
         else if (tipo_op2 == TIPO_MEMORIA) {
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant2 = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg2);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant2, codSeg2);
         }
@@ -1649,6 +1664,7 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
+    char codSeg[4];
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1698,10 +1714,11 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 }
 
-void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char codSeg[])
 {
     int i;
-    int32_t valor, aux;
+    int32_t valor;
+    char aux;
     char bin[33], car;
     if (modo <= 0 || !(modo == 0x01 || modo == 0x02 || modo == 0x04 || modo == 0x08 || modo == 0x10)){
         printf("Error, modo de lectura invalido \n");
@@ -1713,28 +1730,27 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
             printf("[%04X]: ", dir_fis + i * tamano);
             switch (modo)
             {
-                // revisar la longitud de valor, si es Long, word o byte. 4 es la cant de celdas a guardar
             case 0x01: // interpreta decimal
                 scanf("%d", &valor);
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, tamano, codSeg);
                 break;
             case 0x02: // interpreta caracteres
                 scanf("%c", &car);
                 scanf("%c", &aux); // si no esta esto, lee el "enter" como otro caracter
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, car, 4, "DS");
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, car, tamano, codSeg);
                 break;
             case 0x04: // interpreta octal
                 scanf("%o", &valor);
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, tamano, codSeg);
                 break;
             case 0x08: // interpreta hexadecimal
                 scanf("%X", &valor);
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, tamano, codSeg);
                 break;
             case 0x10: // interpreta binario
                 scanf("%32s", bin);
                 valor = (int32_t)strtol(bin, NULL, 2); // convierte una serie de caracteres en enteros
-                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, 4, "DS");
+                GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, valor, tamano, codSeg);
                 break;
             default:
                 printf("Modo para leer no valido \n");
@@ -1745,7 +1761,7 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
     }
 }
 
-void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
+void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char codSeg[])
 {
     int i;
     int32_t valor;
@@ -1755,7 +1771,7 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
     }else {
         for (i = 0; i < cantidad; i++)
         {
-        valor = LeerMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, 4, "DS");
+        valor = LeerMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, tamano, codSeg);
 
         printf("[%04X]: ", dir_fis + i * tamano);
         if (getBit(modo, 0) == 1)
@@ -1776,7 +1792,6 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
         printf("\n");
         }
     }
-
 }
 
 void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor)
@@ -1789,13 +1804,18 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
     dir_fis = tabla_seg[codSeg].base + desplazamiento;
     cantidad = registros[ECX] & 0xFFFF;
     tamano = (registros[ECX] >> 16) & 0xFFFF;
+
+    char codigoSegmento[4];
+
+    strcpy(codigoSegmento, tabla_seg[codSeg].cod);
+
     switch (valor)
     {
     case 0x1: // Lectura
-        read(dir_fis, cantidad, tamano, modo, memoria, registros, tabla_seg);
+        read(dir_fis, cantidad, tamano, modo, memoria, registros, tabla_seg, codigoSegmento);
         break;
     case 0x2: // Escritura
-        write(dir_fis, cantidad,tamano, modo, memoria, registros, tabla_seg);
+        write(dir_fis, cantidad,tamano, modo, memoria, registros, tabla_seg, codigoSegmento);
         break;
     default:
         printf("Modo para el SYS no valido \n");
@@ -1865,9 +1885,7 @@ void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
 {
-    int i;
     int16_t dir_fis;
-    uint32_t bit;
     int32_t resultado = 0;
     char codSeg[4];
 
@@ -1881,7 +1899,7 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         {
             dir_fis = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
+            copiarRegistro((valor2 & 0x001F0000) >> 16, codSeg);
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
         }
         cambiarCC(registros, resultado);
@@ -1890,7 +1908,6 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error: NOT aplicado a un inmediato o ninguno \n");
         exit(1);
     }
-
 }
 
 void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
