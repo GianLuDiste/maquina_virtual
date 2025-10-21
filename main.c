@@ -477,7 +477,19 @@ int32_t ExtenderSigno16Bits(int32_t valor)
 {
     if (valor & 0x00008000)
     {
-        return valor | 0xFFFF0000; // Si el bit 16 está en 1 entonces es un numero negativo. // Se rellena con 1s
+        return valor | 0xFFFF0000; // Si el bit 15 está en 1 entonces es un numero negativo. // Se rellena con 1s
+    }
+    else
+    {
+        return valor;
+    }
+}
+
+int32_t ExtenderSigno8Bits(int32_t valor)
+{
+    if (valor & 0x00000080)
+    {
+        return valor | 0xFFFFFF00; // Si el bit 7 está en 1 entonces es un numero negativo. // Se rellena con 1s
     }
     else
     {
@@ -502,12 +514,15 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
         {
             case 1:
                 resultado = resultado & 0x000000FF;
+                resultado = ExtenderSigno8Bits(resultado);
                 break;
             case 2:
-                resultado = resultado & 0x0000FF00;
+                resultado = (resultado & 0x0000FF00) >> 8;
+                resultado = ExtenderSigno8Bits(resultado);
                 break;
             case 3:
                 resultado = resultado & 0x0000FFFF;
+                resultado = ExtenderSigno16Bits(resultado);
                 break;
             default:
                 resultado = resultado & 0xFFFFFFFF;
@@ -571,13 +586,20 @@ int32_t ProcesarOPMemoria(int32_t valor, int32_t registros[], Segmento tabla_seg
 
 int32_t LeerMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t base, int cant, char codSegmento[]) //cant debe ser menor o igual a 4
 { // Se "para" en la posicion de memoria "base" y lee/concatena los 'cant' bytes siguientes
-    int32_t aux = 0;
+    int32_t aux;
     int i;
 
     int codSeg = obtenerCodSegmento(tabla_seg, codSegmento);
 
     if (base >= 0 && (base >= tabla_seg[codSeg].base) && (base + cant) <= tabla_seg[codSeg].base + tabla_seg[codSeg].tamanio)
     {
+        //Se fija si el primer bit a leer es 1 o 0 y dependiendo de su signo el resultado va a ser negativo o no (Se inicializa en 0 para arrastrar 0s y en 1 para arrastrar 1s)
+        if(getBit(memoria[base]), 7) == 1){
+            aux=-1;
+        }else{
+            aux=0;
+        }
+
         for (i = 0; i < cant; i++)
         {
             aux = aux << 8;
@@ -1358,7 +1380,6 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
         exit(1);
     }
-a
     cambiarCC(registros, resultado);
 }
 
@@ -1367,20 +1388,52 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int cant;
+
+    int32_t mascara;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
     if (tipo_op1 == TIPO_REGISTRO)
     {
-        resultado = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) >> valor2;
+        aux = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) ;
+
+        mascara=0x00FFFFFF;
+
+        cant = getBit(valor1, 7) + getBit(valor1, 6);
+
+        if(cant==0){
+            cant=4;
+        }
+
+        for(int i=0; i<4-cant; i++){
+            aux = aux & mascara;
+            mascara = mascara>>8;
+        }
+
+        //Con la mascara, ponemos 0s en donde se rellenaron los 1s. Así al hacer shift-right, se van a extender los 0s a partir del byte que leemos.
+
+        resultado = resultado >> valor2;
+
         GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         uint32_t aux = (uint32_t)obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
+
+        mascara=0x00FFFFFF;
+
+        cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+
+        for(int i=0; i<4-cant; i++){
+            aux = aux & mascara;
+            mascara = mascara>>8;
+        }
+
+        //Con la mascara, ponemos 0s en donde se rellenaron los 1s. Así al hacer shift-right, se van a extender los 0s a partir del byte que leemos.
         resultado = aux >> valor2;
-        int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
+
         copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
     }
