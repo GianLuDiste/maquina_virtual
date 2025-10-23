@@ -101,11 +101,11 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[]); // inicializa la tabla de segmento, la IP, el CS, el DS y lee el archivo guardandolo en la memoria
 
-void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
+void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano);
 
-void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
+void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano, int * bpoint);
 
-void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]);
+void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano, int *bpoint);
 
 void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1);
 
@@ -143,7 +143,7 @@ void read(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_
 
 void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char codSeg[]);
 
-void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor);
+void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor, char filevmi[], int tamano, int * bpoint);
 
 void Jump(int32_t registros[], Segmento tabla_seg[], uint32_t valor);
 
@@ -284,18 +284,16 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
             GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], 0, 4, "SS");
         }
 
-
-
         if(vmi){
-            ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
+            ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
         }else{
-            ejecutarPrograma(memoria, registros, tabla_seg, ""); //No tiene vmi (ignoramos los BREAKPOINTS)
+            ejecutarPrograma(memoria, registros, tabla_seg, "", tamano); //No tiene vmi (ignoramos los BREAKPOINTS)
         }
 
     }else{
         //Leemos la imagen vmi e iniciamos la ejecución (desde el punto que dejó el vmi al registro[IP])
         leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
-        ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi]);
+        ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano);
     }
 }
 
@@ -823,6 +821,34 @@ void stringWrite(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], in
     }
 }
 
+void breakpoint(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], char filevmi[], int tamano, int * bpoint){
+
+    char opcion;
+
+    //Chequeamos que tenga VMI
+    if(strcmp(filevmi, "")!=0){
+        guardarImagenVmi(memoria, registros, tabla_seg, tamano, filevmi);
+
+        scanf("%c", &opcion);
+
+        while(opcion!='g' && opcion!='q' && opcion!='\n'){
+            scanf("%c", &opcion);
+        }
+
+        if(opcion=='g'){
+            //Se para la ejecución de breakpoints
+            *bpoint=0;
+        }else if(opcion=='q'){
+            //Se aborta la ejecucion de la maquina
+            exit(1);
+        }else if(opcion=='\n'){
+            *bpoint=1;
+        }
+    }else{
+        *bpoint=0;
+    }
+}
+
 //------------------ EJECUCION ---------------------------------------
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[])
@@ -1052,11 +1078,16 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
     fclose(f);
 }
 
-void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[])
+void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano)
 {
+    int bpoint=0;
+
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
-        leerInstruccion(memoria, registros, tabla_seg, filevmi); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
+        leerInstruccion(memoria, registros, tabla_seg, filevmi, tamano, &bpoint); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
+        if(bpoint==1){
+            breakpoint(registros, memoria, tabla_seg, filevmi, tamano, &bpoint);
+        }
     }
 }
 
@@ -1077,7 +1108,7 @@ int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar
     return valor;
 }
 
-void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
+void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano, int *bpoint) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
 {
     uint32_t ip = registros[IP];
     uint8_t byte_de_control = memoria[ip++];
@@ -1103,10 +1134,10 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
 
     registros[IP] = ip;
 
-    ejecutarInstruccion(memoria, registros, tabla_seg, filevmi);
+    ejecutarInstruccion(memoria, registros, tabla_seg, filevmi, tamano, bpoint);
 }
 
-void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[]) // Busca y ejecuta la función respectiva al código de la función
+void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano, int *bpoint) // Busca y ejecuta la función respectiva al código de la función
 {
     uint8_t tipo1, tipo2;
     int32_t valor1, valor2;
@@ -1178,7 +1209,7 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
         switch (registros[OPC])
         {
         case 0x00: // SYS
-            sys(memoria, registros, tabla_seg, valor2);
+            sys(memoria, registros, tabla_seg, valor2, filevmi, tamano, bpoint);
             break;
         case 0x01: // JMP
             jmp(memoria, registros, tabla_seg, tipo2, valor2);
@@ -1898,7 +1929,7 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
     }
 }
 
-void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor)
+void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t valor, char filevmi[], int tamanioMemoria, int * bpoint)
 {
     int32_t modo, puntero;
     int16_t codSeg, desplazamiento, dir_fis, cantidad, tamano;
@@ -1929,6 +1960,12 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
         break;
     case 0x7: // Limpiar consola
         clearScreen();
+        break;
+    case 0xF: // BREAKPOINT
+        if(*bpoint==0){
+             *bpoint=1;
+        }
+        break;
     default:
         printf("Modo para el SYS no valido \n");
         exit(1);
