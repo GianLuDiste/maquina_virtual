@@ -173,6 +173,12 @@ void call(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
 
 void ret(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
+void stringRead(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int32_t dirfis, int16_t codSeg);
+
+void stringWrite(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int32_t dirfis, int16_t codSeg);
+
+void clearScreen();
+
 //-----------------------------------------------
 
 void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
@@ -760,7 +766,6 @@ void ret(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]){
     int16_t desplazamiento;
 
     int32_t aux = 0;
-    char seg[3];
 
     if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
         printf("Stack Underflow, no se pudo completar POP \n");
@@ -771,6 +776,50 @@ void ret(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]){
         aux = LeerMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base + desplazamiento, 4, "SS");
         registros[IP]=aux;
         registros[SP]+=4;
+    }
+}
+
+void clearScreen(){
+    system("cls");
+}
+
+void stringRead(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int32_t dirfis, int16_t codSeg){
+
+    char cadena[255];
+    int32_t cantCaracteres;
+    int i=0;
+
+    gets(cadena);
+
+    cantCaracteres = registros[ECX];
+
+    if(cantCaracteres>-1){
+        while(i<cantCaracteres && i<strlen(cadena)){
+            GuardarEnMemoria(memoria, registros, tabla_seg, dirfis+i, cadena[i], 1, tabla_seg[codSeg].cod);
+            i++;
+        }
+    }else{
+        while(i<strlen(cadena)){
+            GuardarEnMemoria(memoria, registros, tabla_seg, dirfis+i, cadena[i], 1, tabla_seg[codSeg].cod);
+            i++;
+        }
+    }
+
+    GuardarEnMemoria(memoria, registros, tabla_seg, dirfis+i, '\0', 1, tabla_seg[codSeg].cod);
+}
+
+void stringWrite(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int32_t dirfis, int16_t codSeg){
+
+    int32_t caracter;
+
+    int i=0;
+
+    caracter = LeerMemoria(memoria, registros, tabla_seg, dirfis, 1, tabla_seg[codSeg].cod);
+
+    while(caracter!='\0'){
+        i++;
+        printf("%c", caracter);
+        caracter = LeerMemoria(memoria, registros, tabla_seg, dirfis+i, 1, tabla_seg[codSeg].cod);
     }
 }
 
@@ -1872,6 +1921,14 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
     case 0x2: // Escritura
         write(dir_fis, cantidad,tamano, modo, memoria, registros, tabla_seg, codigoSegmento);
         break;
+    case 0x3: // STRING READ
+        stringRead(registros, memoria, tabla_seg, dir_fis, codSeg);
+        break;
+    case 0x4: // STRING WRITE
+        stringWrite(registros, memoria, tabla_seg, dir_fis, codSeg);
+        break;
+    case 0x7: // Limpiar consola
+        clearScreen();
     default:
         printf("Modo para el SYS no valido \n");
         exit(1);
