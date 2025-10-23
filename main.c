@@ -163,9 +163,17 @@ void jnn(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
 
+//----------------------------------------------
+
 void push(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor);
 
 void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tipo, int32_t valor);
+
+void call(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2);
+
+void ret(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
+
+//-----------------------------------------------
 
 void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]);
 
@@ -725,6 +733,47 @@ int obtenerCodSegmento(Segmento tabla_seg[], char cod[]) {
     return i;
 }
 
+void call(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2){
+
+    int16_t codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int16_t desplazamiento;
+
+    //OFFSET del CS
+    valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
+
+    registros[SP] -= 4;
+    if (registros[SP] < tabla_seg[codSegmentoSS].base) {
+        printf("Stack Overflow, SP se paso de la base del SS\n");
+        exit(1);
+    }
+    else {
+        LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
+
+        GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base+desplazamiento, registros[IP], 4, "SS");
+
+        Jump(registros, tabla_seg, valor2);
+    }
+}
+
+void ret(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]){
+    int16_t codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
+    int16_t desplazamiento;
+
+    int32_t aux = 0;
+    char seg[3];
+
+    if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
+        printf("Stack Underflow, no se pudo completar POP \n");
+        exit(1);
+    }
+    else {
+        LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
+        aux = LeerMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base + desplazamiento, 4, "SS");
+        registros[IP]=aux;
+        registros[SP]+=4;
+    }
+}
+
 //------------------ EJECUCION ---------------------------------------
 
 void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], int tamano, char filevmx[])
@@ -1111,6 +1160,12 @@ void ejecutarInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_s
             break;
         case 0x0C: // POP
             pop(memoria, registros, tabla_seg, tipo2, valor2);
+            break;
+        case 0x0D: //CALL
+            call(memoria, registros, tabla_seg, tipo2, valor2);
+            break;
+        case 0x0E: //RET
+            ret(memoria, registros, tabla_seg);
             break;
         case 0x0F: // STOP
             registros[IP] = 0xFFFFFFFF;
@@ -1825,14 +1880,16 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
 
 void Jump(int32_t registros[], Segmento tabla_seg[], uint32_t valor)
 {
+    int codSeg = obtenerCodSegmento(tabla_seg, "CS");
 
-    if (valor >= 0 && valor < tabla_seg[0].tamanio)
-        registros[IP] = valor;
+    int32_t puntero = CrearPuntero(codSeg, valor);
+
+    if (valor >= 0 && valor < tabla_seg[codSeg].tamanio)
+        registros[IP] = puntero;
     else{
         printf("ERROR: Se intento acceder afuera del segmento de codigo\n");
         exit(1);
     }
-
 }
 
 void jmp(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, int32_t valor2)
