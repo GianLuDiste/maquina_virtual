@@ -214,6 +214,8 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
 
     uint32_t basePunteros;
 
+    int d=0;
+
     if(strstr(argv[1], ".vmi")!=NULL){ // guardo la posicion de cada archivo en el vector de argumentos
         //Cargamos la imagen .vmi
         vmx = 0;
@@ -251,7 +253,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
     //Se fija si hay un -d y si está entonces se ejecuta el Dissasembler.
     if(i<argc && strcmp(argv[i], "-d")==0 && vmx){
         //printf("%s: disasembler activado\n", argv[i]);
-        Dissasembler(memoria, registros, tabla_seg);
+        d=1;
         i++;
     }
 
@@ -284,15 +286,23 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
             GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], 0, 4, "SS");
         }
 
+        if(d){
+            Dissasembler(memoria, registros, tabla_seg);
+        }
+
         if(vmi){
             ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
         }else{
             ejecutarPrograma(memoria, registros, tabla_seg, "", tamano); //No tiene vmi (ignoramos los BREAKPOINTS)
         }
-
     }else{
         //Leemos la imagen vmi e iniciamos la ejecución (desde el punto que dejó el vmi al registro[IP])
         leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
+
+        if(d){
+            Dissasembler(memoria, registros, tabla_seg);
+        }
+
         ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano);
     }
 }
@@ -1563,7 +1573,7 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
         //Con la mascara, ponemos 0s en donde se rellenaron los 1s. Así al hacer shift-right, se van a extender los 0s a partir del byte que leemos.
 
-        resultado = resultado >> valor2;
+        resultado = aux >> valor2;
 
         GuardarEnRegistro(registros, (valor1 & 0xFF), resultado);
     }
@@ -2064,11 +2074,74 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
 
 // aca hay que buscar el Code Segment en la tabla de segmentos y recorres el ip ahi,
-//ahora esta mal porque esta hecho con los segmentos arbitrarios
 {
-    int32_t ip=tabla_seg[0].base;
-    while (ip < tabla_seg[0].tamanio && ip != 0xFFFFFFFF)
+    int16_t codSeg;
+
+    int16_t desplazamiento;
+
+    LeerPuntero(tabla_seg, registros[IP], &codSeg, &desplazamiento);
+
+    int32_t ip=tabla_seg[codSeg].base;
+
+    int32_t entrypoint = tabla_seg[codSeg].base + desplazamiento;
+
+    if(registros[KS]!=-1){ //TIENE CONSTANTES
+        int16_t codSegKS = obtenerCodSegmento(tabla_seg, "KS");
+        int i=tabla_seg[codSegKS].base;
+        int j;
+        char palabra[50];
+
+        while(i<tabla_seg[codSegKS].base + tabla_seg[codSegKS].tamanio){
+            j=0;
+            strcpy(palabra, "");
+            printf("[%04X]", i);
+
+            //--------- LEE Y MUESTRA EL HEXA DE LA PALABRA
+
+            while(memoria[i]!='\0'){
+                char temp[2] = {(char)memoria[i], '\0'};
+                strncat(palabra, temp, 1);
+                if(j<7){
+                    printf("[%02X]", memoria[i]);
+                }
+                j++;
+                i++;
+            }
+
+            if(j<7){
+                printf(" [%02X]", '\0');
+            }else{
+                printf(" ..");
+            }
+
+            //---------------------------------------------
+
+            //---------- MUESTRA LA CADENA COMPLETA ENTRE COMILLAS --------------
+
+             printf("           |  \"");
+
+            for(int k=0; k<strlen(palabra); k++){
+                if(palabra[k]>= 32 && palabra[k]<= 126){
+                    printf("%c", palabra[k]);
+                }else{
+                    printf(".");
+                }
+            }
+
+            printf("\"\n");
+
+            //----------------------------------------------------------------
+
+            //Cuando llega hasta acá, i está parado sobre \0
+            i++;
+        }
+    }
+
+    while (ip < tabla_seg[codSeg].base + tabla_seg[codSeg].tamanio && ip != 0xFFFFFFFF)
     {
+        if(ip==entrypoint){
+            printf(">");
+        }
         mostrarInstruccion(memoria, &ip); // manda a mostrar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
     }
 }
@@ -2133,19 +2206,35 @@ void mostrarOperador(int32_t op, uint8_t tipo){
             desplazamientoOperando = (op & 0x0000FFFF);
             copiarRegistro(codRegistro, reg);
 
+            int cant = 4 - (getBit(op, 23)*2 + getBit(op, 22));
+
+            char prefijo;
+
+            switch(cant){
+                case 2: prefijo = 'w';
+                        break;
+                case 1: prefijo = 'b';
+                        break;
+                default: prefijo = ' ';
+                        break;
+            }
+
             if(desplazamientoOperando==0){
-                printf("[%s]", reg);
+                printf("%c[%s]", prefijo, reg);
             }else if(desplazamientoOperando>0){
-                printf("[%s+%d]", reg, desplazamientoOperando);
+                printf("%c[%s+%d]", prefijo, reg, desplazamientoOperando);
             }else{
-                printf("[%s%d]", reg, desplazamientoOperando);
+                printf("%c[%s%d]", prefijo, reg, desplazamientoOperando);
             }
             break;
     }
 }
 
 void copiarRegistro(uint32_t reg, char registro[]){
-    switch(reg){
+
+    int sector = getBit(reg, 7)*2 + getBit(reg, 6);
+
+    switch(reg & 0x1F){
         case LAR:
             strcpy(registro, "LAR");
             break;
@@ -2174,22 +2263,76 @@ void copiarRegistro(uint32_t reg, char registro[]){
             strcpy(registro, "BP");
             break;
         case EAX:
-            strcpy(registro, "EAX");
+            switch(sector){
+                case 0: strcpy(registro, "EAX");
+                        break;
+                case 1: strcpy(registro, "AL");
+                        break;
+                case 2: strcpy(registro, "AH");
+                        break;
+                case 3: strcpy(registro, "AX");
+                        break;
+            }
             break;
         case EBX:
-            strcpy(registro, "EBX");
+            switch(sector){
+                case 0: strcpy(registro, "EBX");
+                        break;
+                case 1: strcpy(registro, "BL");
+                        break;
+                case 2: strcpy(registro, "BH");
+                        break;
+                case 3: strcpy(registro, "BX");
+                        break;
+            }
             break;
         case ECX:
-            strcpy(registro, "ECX");
+            switch(sector){
+                case 0: strcpy(registro, "ECX");
+                        break;
+                case 1: strcpy(registro, "CL");
+                        break;
+                case 2: strcpy(registro, "CH");
+                        break;
+                case 3: strcpy(registro, "CX");
+                        break;
+            }
             break;
         case EDX:
-            strcpy(registro, "EDX");
+            switch(sector){
+                case 0: strcpy(registro, "EDX");
+                        break;
+                case 1: strcpy(registro, "DL");
+                        break;
+                case 2: strcpy(registro, "DH");
+                        break;
+                case 3: strcpy(registro, "DX");
+                        break;
+            }
             break;
         case EEX:
-            strcpy(registro, "EEX");
+            switch(sector){
+                case 0: strcpy(registro, "EEX");
+                        break;
+                case 1: strcpy(registro, "EL");
+                        break;
+                case 2: strcpy(registro, "EH");
+                        break;
+                case 3: strcpy(registro, "EX");
+                        break;
+            }
             break;
         case EFX:
-            strcpy(registro, "EFX");
+            switch(sector){
+                case 0: strcpy(registro, "EFX");
+                        break;
+                case 1: strcpy(registro, "FL");
+                        break;
+                case 2: strcpy(registro, "FH");
+                        break;
+                case 3: strcpy(registro, "FX");
+                        break;
+            }
             break;
         case AC:
             strcpy(registro, "AC");
@@ -2248,6 +2391,18 @@ void obtenerMnemonico(uint8_t byte_de_control, char mnemonico[]){
             break;
         case 0x08: // NOT
             strcpy(mnemonico,"NOT");
+            break;
+        case 0x0B: // PUSH
+            strcpy(mnemonico, "PUSH");
+            break;
+        case 0x0C: // POP
+            strcpy(mnemonico, "POP");
+            break;
+        case 0x0D: // CALL
+            strcpy(mnemonico, "CALL");
+            break;
+        case 0x0E: // RET
+            strcpy(mnemonico, "RET");
             break;
         case 0x0F: // STOP
             strcpy(mnemonico,"STOP");
