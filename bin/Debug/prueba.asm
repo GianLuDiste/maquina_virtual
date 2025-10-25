@@ -10,9 +10,7 @@ basura2 equ "basura"
 ; ESTO SI SE EJECUTA
 main:	Sys 0xF
 	Sys 0xF
-	MOV EAX, 10
-	MOV EBX, DS
-	MOV AX, 5
-	MOV CL, 3
-	MOV EDX, EAX
+	MOV EFX, DS
+	MOV [EFX], 10
+	ADD [EFX], 5
 	STOP

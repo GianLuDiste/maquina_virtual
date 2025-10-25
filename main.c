@@ -734,7 +734,6 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 }
 
 void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], int d) {
-
     char id[6];
     uint8_t version;
     uint16_t tam_Kib;
@@ -801,7 +800,6 @@ void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archiv
 
     ejecutarPrograma(memoria, registros, tabla_seg, nombre_archivo, tam_mem);
 }
-
 
 int obtenerCodSegmento(Segmento tabla_seg[], char cod[]) {
     int i = 0;
@@ -1229,33 +1227,7 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 
     while (dirIP >= dirBaseCS && dirIP < dirTamCS && registros[IP] != 0xFFFFFFFF)
     {
-        printf("\nIP: %d", registros[IP] & 0xFFFF);
         leerInstruccion(memoria, registros, tabla_seg, filevmi, tamano, &bpoint); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
-
-        printf("\nEAX: ");
-        printBits32(registros[EAX]);
-        /*
-        printf("\nEBX: ");
-        printBits32(registros[EBX]);
-        */
-        printf("\nECX: ");
-        printBits32(registros[ECX]);
-        /*
-        printf("\nEDX: ");
-        printBits32(registros[EDX]);
-        */
-        if (registros[IP] == 19) {
-            printf("\nDS + %d: ", i);
-            mostrarMemoria(memoria, registros, tabla_seg, i, 1);
-            i++;
-        }
-
-        printf("\nCC: ");
-        printBits32(registros[CC]);
-
-        printf("\nIP: %d\n", registros[IP] & 0xFFFF);
-
-        printf("\n\n");
 
         if(bpoint==1){
             breakpoint(registros, memoria, tabla_seg, filevmi, tamano, &bpoint);
@@ -1536,6 +1508,9 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
 void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
     int16_t dir_fis;
+    int cant;
+    int16_t codSeg;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1543,15 +1518,19 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         GuardarEnRegistro(registros, (valor1 & 0xFF), valor2);
     else if (tipo_op1 == TIPO_MEMORIA)
     {
+        cant=4-(getBit(valor1, 23)*2 + getBit(valor1,22));
+
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         // revisar la longitud de valor, si es Long, word o byte
-        GuardarEnMemoria(memoria, registros,tabla_seg, dir_fis, valor2, 4, "DS");
+
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codSeg, &desplazamiento);
+
+        GuardarEnMemoria(memoria, registros,tabla_seg, dir_fis, valor2, cant, tabla_seg[codSeg].cod);
     }
     else{
         printf("Error MOV Inmediato o Ninguno a Cualquiera \n");
         exit(1);
     }
-
 }
 
 void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
@@ -1560,6 +1539,8 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int cant;
     int16_t dir_fis;
     int32_t resultado = 0;
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1573,8 +1554,8 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
         cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
          printf("Error ADD Inmediato o Ninguno a Cualquiera \n");
@@ -1589,6 +1570,8 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     char codSeg[4];
     int16_t dir_fis;
     int32_t resultado = 0;
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1602,8 +1585,8 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) - valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error SUB Inmediato o ninguno -= cualquiera \n");
@@ -1617,6 +1600,8 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     char codSeg[4];
     int16_t dir_fis;
     int32_t resultado = 0;
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1630,8 +1615,8 @@ void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) * valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error MUL Inmediato o ninguno *= cualquiera \n");
@@ -1647,6 +1632,8 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
     int16_t dir_fis;
     int32_t resultado, aux;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1671,8 +1658,8 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
             registros[AC] = aux % valor2;
             dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
             int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+            LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
         }
         else{
             printf("Error (Inmediato o ninugno) / cualquiera \n");
@@ -1697,6 +1684,8 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1711,8 +1700,8 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux << valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error: (Ninguno o Inmediato) << Cualquiera \n");
@@ -1728,6 +1717,8 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     char codSeg[4];
     int cant;
     uint32_t aux;
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     int32_t mascara;
 
@@ -1773,8 +1764,8 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         //Con la mascara, ponemos 0s en donde se rellenaron los 1s. Así al hacer shift-right, se van a extender los 0s a partir del byte que leemos.
         resultado = aux >> valor2;
 
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error: (Ninguno o Inmediato) >> Cualquiera \n");
@@ -1790,6 +1781,8 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1804,8 +1797,8 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux >> valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error: (Ninguno o Inmediato) SAR Cualquiera \n");
@@ -1819,6 +1812,8 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1833,8 +1828,8 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux & valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error: (Ninguno o Inmediato) & Cualquiera \n");
@@ -1848,6 +1843,8 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1862,8 +1859,8 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux | valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error: (Ninguno o Inmediato) | Cualquiera \n");
@@ -1878,6 +1875,8 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1892,8 +1891,8 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         int32_t aux = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
         resultado = aux ^ valor2;
         int cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error inmediato o ninguno xor cualquiera \n");
@@ -1907,6 +1906,9 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
     char codSeg1[4], codSeg2[4];
     int16_t dir_fis1, dir_fis2;
     int32_t aux1, aux2;
+    int16_t codNumero1;
+    int16_t codNumero2;
+    int16_t desplazamiento;
 
     if ((tipo_op1 == TIPO_REGISTRO || tipo_op1 == TIPO_MEMORIA) && (tipo_op2 == TIPO_REGISTRO || tipo_op2 == TIPO_MEMORIA)){
         aux1 = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg);
@@ -1927,15 +1929,15 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
             GuardarEnRegistro(registros, (valor1 & 0xFF), aux2);
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg2);
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant, codSeg2);
+            LeerPuntero(tabla_seg, registros[(valor2 & 0x001F0000) >> 16], &codNumero2, &desplazamiento);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant, tabla_seg[codNumero2].cod);
         }
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
         dir_fis1 = ProcesarOPMemoria(valor1, registros, tabla_seg);
         int cant1 = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
-        copiarRegistro((valor1 & 0x1F), codSeg1);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero1, &desplazamiento);
 
         if (tipo_op2 == TIPO_REGISTRO) {
             GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1);
@@ -1944,9 +1946,9 @@ void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t t
         else if (tipo_op2 == TIPO_MEMORIA) {
             dir_fis2 = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant2 = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg2);
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, codSeg1);
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant2, codSeg2);
+            LeerPuntero(tabla_seg, registros[(valor2 & 0x001F0000) >> 16], &codNumero2, &desplazamiento);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis1, aux2, cant1, tabla_seg[codNumero1].cod);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis2, aux1, cant2, tabla_seg[codNumero2].cod);
         }
     }
 }
@@ -1956,6 +1958,8 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -1972,8 +1976,8 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) & 0xFFFF0000;
         resultado = resultado | (valor2 & 0x0000FFFF);
         int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error (Inmediato o Ninguno) LDL Cualquiera \n");
@@ -1986,6 +1990,8 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int16_t dir_fis;
     int32_t resultado;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -2005,8 +2011,8 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
         resultado = resultado | valor2;
         int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error (Inmediato o Ninguno) LDH Cualquiera \n");
@@ -2019,6 +2025,8 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     char codSeg[4];
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     valor2 = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
 
@@ -2028,8 +2036,8 @@ void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     {
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-        copiarRegistro((valor1 & 0x001F0000) >> 16, codSeg);
-        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, rand() % valor2, cant, codSeg);
+        LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, rand() % valor2, cant, tabla_seg[codNumero].cod);
     }
     else{
         printf("Error RND Inmediato o Ninguno a Cualquiera \n");
@@ -2230,6 +2238,9 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     int32_t resultado = 0;
     char codSeg[4];
 
+    int16_t codNumero;
+    int16_t desplazamiento;
+
     if (tipo_op2 != TIPO_INMEDIATO && tipo_op2 != TIPO_NINGUNO)
     {
         resultado = obtenerValorOperando(valor2, tipo_op2, registros, memoria, tabla_seg);
@@ -2240,8 +2251,8 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
         {
             dir_fis = ProcesarOPMemoria(valor2, registros, tabla_seg);
             int cant = 4 - (getBit(valor2, 23) * 2 + getBit(valor2, 22));
-            copiarRegistro((valor2 & 0x001F0000) >> 16, codSeg);
-            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, codSeg);
+            LeerPuntero(tabla_seg, registros[(valor2 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
         }
         cambiarCC(registros, resultado);
     }
