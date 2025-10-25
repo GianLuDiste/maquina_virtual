@@ -93,7 +93,7 @@ void GuardarEnRegistro(int32_t registros[], int8_t reg, int32_t valorGuardar);
 
 void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint32_t tam_memoria, char nombre_archivo[]);
 
-void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem);
+void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], int d);
 
 void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * argv[]);
 
@@ -317,13 +317,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
     }else{
         //Leemos la imagen vmi e iniciamos la ejecución (desde el punto que dejó el vmi al registro[IP])
-        leerImagenVmi(memoria, registros, tabla_seg, argv[vmi], &tamano);
-
-        if(d){
-            Dissasembler(memoria, registros, tabla_seg);
-        }
-
-        ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano);
+        leerImagenVmi(registros, tabla_seg, argv[vmi], d);
     }
 }
 
@@ -739,11 +733,12 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     printf("Se guardo exitosamente el VMI \n");
 }
 
-void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], uint32_t *tam_mem) {
+void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], int d) {
 
     char id[6];
     uint8_t version;
     uint16_t tam_Kib;
+    uint32_t tam_mem;
 
     FILE *arch = fopen(nombre_archivo, "rb");
 
@@ -766,13 +761,23 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
     }
 
     fread(&tam_Kib, sizeof(uint16_t), 1, arch);
-    *tam_mem = tam_Kib * 1024;
 
-    fread(registros, sizeof(int32_t), 32, arch);
+    tam_Kib = BigEndianLittleEndian16(tam_Kib);
+    tam_mem = tam_Kib * 1024;
+
+    int8_t memoria[tam_mem];
+
+    for(int i=0; i<32; i++){
+        fread(&(registros[i]), sizeof(int32_t), 1, arch);
+        registros[i]=BigEndianLittleEndian32(registros[i]);
+    }
 
     for(int i=0; i<NUM_SEG; i++){
         fread(&(tabla_seg[i].base), sizeof(int16_t), 1, arch);
         fread(&(tabla_seg[i].tamanio), sizeof(int16_t), 1, arch);
+
+        tabla_seg[i].base = BigEndianLittleEndian16(tabla_seg[i].base);
+        tabla_seg[i].tamanio = BigEndianLittleEndian16(tabla_seg[i].tamanio);
     }
 
     char cod[3];
@@ -784,11 +789,17 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
         }
     }
 
-    fread(memoria, sizeof(int8_t), *tam_mem, arch);
+    fread(memoria, sizeof(int8_t), tam_mem, arch);
 
     fclose(arch);
 
     printf("Se leyo exitosamente el VMI \n");
+
+    if(d){
+            Dissasembler(memoria, registros, tabla_seg);
+    }
+
+    ejecutarPrograma(memoria, registros, tabla_seg, nombre_archivo, tam_mem);
 }
 
 
