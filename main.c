@@ -714,21 +714,23 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 
     fwrite(id, sizeof(uint8_t), 5, arch); // escribo el identificador
     fwrite(&version, sizeof(uint8_t), 1, arch); // escribo la version
-    fwrite(&tam_Kib, sizeof(uint16_t), 1, arch); // escribo el tamano de memoria en Kib
 
-    fwrite(registros, sizeof(int32_t), 32, arch); // escribo los registros
+    int16_t tamanioAlReves = BigEndianLittleEndian16(tam_Kib);
+    fwrite(&tamanioAlReves, sizeof(uint16_t), 1, arch); // escribo el tamano de memoria en Kib
 
-
+    for(int i=0; i<32; i++){
+        int32_t registroAlReves = BigEndianLittleEndian32(registros[i]);
+        fwrite(&registroAlReves, sizeof(int32_t), 1, arch); // escribo los registros
+    }
 
     //Escribo la tabla de segmentos
     for(int i=0; i<NUM_SEG; i++){
-        fwrite(&(tabla_seg[i].base), sizeof(int16_t), 1, arch);
-        fwrite(&(tabla_seg[i].tamanio), sizeof(int16_t), 1, arch);
+        int16_t baseAlReves = BigEndianLittleEndian16(tabla_seg[i].base);
+        int16_t tamanioAlReves = BigEndianLittleEndian16(tabla_seg[i].tamanio);
+
+        fwrite(&baseAlReves, sizeof(int16_t), 1, arch);
+        fwrite(&tamanioAlReves, sizeof(int16_t), 1, arch);
     }
-
-
-
-    //fwrite(tabla_seg, sizeof(Segmento), 8, arch); // escribo la tabla de segmentos
 
     fwrite(memoria, sizeof(int8_t), tam_memoria, arch); // escribo la memoria
 
