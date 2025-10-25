@@ -53,7 +53,7 @@ void printBits16(uint16_t valor);// imprime bit a bit 16 bits
 
 void printBits32(uint32_t valor); // imprime bit a bit 32 bits NO FINAL
 
-void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento); // muestra en pantalla una celda de memoria, NO FINAL
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento, int cant); // muestra en pantalla una celda de memoria, NO FINAL
 
 uint8_t getBit(int32_t valor, int8_t n); // devuelve el valor del n-ésimo del valor
 
@@ -228,7 +228,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
     }else if(strstr(argv[2], ".vmi")!=NULL){
         //Tenemos un .vmx y un .vmi
         vmx = 1;
-        vmi = 2; //
+        vmi = 2;
         i=3;
     }else{
         //Cargamos el .vmx sólo
@@ -279,10 +279,11 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
 
         IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx]);
-
+        printf("Base Punteros: ");printBits32(basePunteros);
+        printf("\nTabla_seg[0].cod: %s \n", tabla_seg[0].cod);
         if (strcmp(tabla_seg[0].cod, "PS") == 0) {
             registros[SP] -= 4;
-            int32_t puntero = CrearPuntero(obtenerCodSegmento(tabla_seg, "PS"), basePunteros);
+            int32_t puntero = CrearPuntero(0, basePunteros); //obtenerCodSegmento(tabla_seg, "PS") esto estaba en vez del 0, lo cambie porque ya sabemos que si entra aca es 0
             GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], puntero, 4, "SS");
             registros[SP] -= 4;
             GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], cantParametros, 4, "SS");
@@ -301,6 +302,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
 
         if(vmi){
+            printf("GIAN LUCA %s", argv[vmi]);
             ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
         }else{
             ejecutarPrograma(memoria, registros, tabla_seg, "", tamano); //No tiene vmi (ignoramos los BREAKPOINTS)
@@ -324,7 +326,7 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
     int32_t basesParametros[50];
 
      //----------- LECTURA DE PARAMETROS ------------------------------
-            printf("%s, P: \n", argv[i]);
+            //printf("%s, P: \n", argv[i]);
             i++; //Salteamos -p
 
             base=0;
@@ -380,11 +382,11 @@ int32_t setBit(int32_t valor, int8_t n, int8_t x)
     return valor;
 }
 
-void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento)
+void mostrarMemoria(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int desplazamiento, int cant)
 {
     int16_t codSeg = obtenerCodSegmento(tabla_seg, "DS");
 
-    printBits32(LeerMemoria(memoria, registros, tabla_seg ,tabla_seg[codSeg].base + desplazamiento, 4, "DS"));
+    printBits32(LeerMemoria(memoria, registros, tabla_seg ,tabla_seg[codSeg].base + desplazamiento, cant, "DS"));
 }
 
 //-------- PRINTS DE BITS ----------------------
@@ -935,7 +937,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             fread(&tamCS, 2, 1, f); //Code Segment
             tamCS = BigEndianLittleEndian16(tamCS);
 
-            printf("TAMANOCS: %d\n", tamCS);
+            //printf("TAMANOCS: %d\n", tamCS);
 
             if (sumatamanos + tamCS >= tamano) {
                 printf("El CS se excedio el tamano de la memoria\n");
@@ -947,7 +949,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             fread(&tamDS, 2, 1, f); // Data Segment
             tamDS = BigEndianLittleEndian16(tamDS);
 
-            printf("TAMANODS: %d\n", tamDS);
+            //printf("TAMANODS: %d\n", tamDS);
 
             if (sumatamanos + tamDS >= tamano) {
                 printf("El DS se excedio el tamano de la memoria\n");
@@ -961,7 +963,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             fread(&tamES, 2, 1, f); // extra segment
             tamES = BigEndianLittleEndian16(tamES);
 
-            printf("TAMANOES: %d\n", tamES);
+            //printf("TAMANOES: %d\n", tamES);
 
             if (sumatamanos + tamES >= tamano) {
                 printf("El ES se excedio el tamano de la memoria\n");
@@ -971,10 +973,10 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                 sumatamanos += tamES;
 
 
-             fread(&tamSS, 2, 1, f); // Stack Segment
+            fread(&tamSS, 2, 1, f); // Stack Segment
             tamSS = BigEndianLittleEndian16(tamSS);
 
-            printf("TAMANOSS: %d\n", tamSS);
+            //printf("TAMANOSS: %d\n", tamSS);
 
             if (sumatamanos + tamSS >= tamano) {
                 printf("El SS se excedio el tamano de la memoria\n");
@@ -987,7 +989,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             fread(&tamKS, 2, 1, f); // Const Segment
             tamKS = BigEndianLittleEndian16(tamKS);
 
-            printf("TAMANOKS: %d\n", tamKS);
+            //printf("TAMANOKS: %d\n", tamKS);
 
             if (sumatamanos + tamKS >= tamano) {
                 printf("El KS se excedio el tamano de la memoria\n");
@@ -1049,8 +1051,8 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             fread(&entry_point, 2, 1, f);
             entry_point = BigEndianLittleEndian16(entry_point);
-            registros[IP] = registros[CS] + entry_point;
-            // registros[ip] = comienzo del code segment + entry point
+            registros[IP] = CrearPuntero(obtenerCodSegmento(tabla_seg, "CS"), entry_point); //registros[IP] = registros[CS] + entry_point;
+            //registros[ip] = comienzo del code segment + entry point
 
             printf("ENTRY POINT: %d\n", entry_point);
             printf("REGISTROS IP: %d\n", registros[IP]);
@@ -1145,31 +1147,40 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano)
 {
-    int bpoint=0;
+    int bpoint=0, i=0;
 
     while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
     {
+        printf("\nIP: %d", registros[IP]);
         leerInstruccion(memoria, registros, tabla_seg, filevmi, tamano, &bpoint); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
 
-        /*
+
         printf("\nEAX: ");
         printBits32(registros[EAX]);
-
+        /*
         printf("\nEBX: ");
         printBits32(registros[EBX]);
-
+        */
         printf("\nECX: ");
         printBits32(registros[ECX]);
-
+        /*
         printf("\nEDX: ");
         printBits32(registros[EDX]);
+        */
+        if (registros[IP] == 19) {
+            printf("\nDS + %d: ", i);
+            mostrarMemoria(memoria, registros, tabla_seg, i, 1);
+            i++;
+        }
 
-        printf("\nDS: ");
-        mostrarMemoria(memoria, registros, tabla_seg, 0);
+        printf("\nCC: ");
+        printBits32(registros[CC]);
+
+        printf("\nIP: %d\n", registros[IP]);
 
         printf("\n\n");
 
-        */
+
 
         if(bpoint==1){
             breakpoint(registros, memoria, tabla_seg, filevmi, tamano, &bpoint);
