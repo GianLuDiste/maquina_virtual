@@ -279,8 +279,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
 
         IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx]);
-        printf("Base Punteros: ");printBits32(basePunteros);
-        printf("\nTabla_seg[0].cod: %s \n", tabla_seg[0].cod);
+
         if (strcmp(tabla_seg[0].cod, "PS") == 0) {
             registros[SP] -= 4;
             int32_t puntero = CrearPuntero(0, basePunteros); //obtenerCodSegmento(tabla_seg, "PS") esto estaba en vez del 0, lo cambie porque ya sabemos que si entra aca es 0
@@ -332,28 +331,41 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
             base=0;
             *cantParametros=0;
 
-            for(;i<argc;i++){
+            while(i<argc){
                 //printf("%d: %s \n", i, argv[i]); // print para mostrar cada parametro
                 basesParametros[*cantParametros]=base; //Guardamos punteros a cada palabra
                 *cantParametros += 1;
-                for(j=0; j<=strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'. //Vamos caracter a caracter guardando en memoria
+                for(j=0; j<strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'. //Vamos caracter a caracter guardando en memoria
                     tabla_seg[0].tamanio++;  //Se va aumentando el tamaño del Param Segment a medida que se agregan caracteres
-                    //printf("%c", argv[i][j]); //print para ver cada letra que se va guardando
-                    GuardarEnMemoria(memoria, registros, tabla_seg, base+j, argv[i][j], 1, "PS"); //Guardamos caracter por caracter (1 byte cada uno)
+                    printf("%c", argv[i][j]); //print para ver cada letra que se va guardando
+                    GuardarEnMemoria(memoria, registros, tabla_seg, base+j, (int8_t)argv[i][j], 1, "PS"); //Guardamos caracter por caracter (1 byte cada uno)
+                    //printf("%c", memoria[j]);
                 }
+
+                //GuardarEnMemoria(memoria, registros, tabla_seg, base+j, (int8_t)'\0', 1, "PS");
+
+                tabla_seg[0].tamanio++;
+                memoria[base+j]=0;
+
+                j++;
+
                 base+=j;
+
+                i++;
             }
 
             *punteroBaseParametros = base;
 
+            //printf("Puntero Base Parametros: %d", *punteroBaseParametros);
+
             //El valor de base en este punto es donde terminan los parametros guardados en memoria
-            for(int i=0; i<*cantParametros; i++){
+            for(int k=0; k<*cantParametros; k++){
                 tabla_seg[0].tamanio+=4;
-                GuardarEnMemoria(memoria, registros, tabla_seg,  base, basesParametros[i], 4, "PS");
+                GuardarEnMemoria(memoria, registros, tabla_seg,  base, basesParametros[k], 4, "PS");
                 base+=4;
             }
 
-            //printf("tamanio: %d", tabla_seg[0].tamanio); //print para ver el tamaño final del Param Segment.
+            //printf("\ntamanio: %d", tabla_seg[0].tamanio); //print para ver el tamaño final del Param Segment.
 
     //------------------------------------------------------
 }
@@ -1002,8 +1014,6 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             //--------------------------------------------------------
 
             //----------------------- Inicializacion del Const Segment -------------------------
-
-
 
             if (tamKS > 0) {
 
