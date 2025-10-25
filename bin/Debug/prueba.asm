@@ -1,4 +1,4 @@
-basura1 equ "basura"
+basura1 equ "basura re loca jaja"
 salto equ "\n"
 basura2 equ "basura"
 
@@ -8,4 +8,7 @@ basura2 equ "basura"
         stop
 
 ; ESTO SI SE EJECUTA
-main:   MOV EAX, 10
+main:	Sys 0xF
+	MOV EBX, DS   
+	MOV [EBX], 10
+	STOP

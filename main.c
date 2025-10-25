@@ -270,27 +270,37 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
 
         //Chequeamos si hay parámetros...
         if(i<argc && strcmp(argv[i], "-p")==0){
-            printf("SI HAY PARAMETROS\n");
+            //printf("SI HAY PARAMETROS\n");
             LeerParametros(memoria, registros, tabla_seg, argc, argv, i, &basePunteros, &cantParametros); //Leemos los parámetros y los guardamos en memoria
         }
         else {
-            printf("NO HAY PARAMETROS\n");
+            //printf("NO HAY PARAMETROS\n");
             registros[PS] = -1; //No hay parámetros, ponemos -1 en el Registro del Param Segment
         }
 
         IniciarMaquinaVirtual(registros, memoria, tabla_seg, tamano, argv[vmx]);
 
         if (strcmp(tabla_seg[0].cod, "PS") == 0) {
-            registros[SP] -= 4;
             int32_t puntero = CrearPuntero(0, basePunteros); //obtenerCodSegmento(tabla_seg, "PS") esto estaba en vez del 0, lo cambie porque ya sabemos que si entra aca es 0
-            GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], puntero, 4, "SS");
+
+            //Guardamos el puntero a la base de parametros en la pila
             registros[SP] -= 4;
-            GuardarEnMemoria(memoria, registros, tabla_seg, registros[SP], cantParametros, 4, "SS");
+            LeerPuntero(tabla_seg, registros[SP], &codSeg, &desplazamiento);
+            GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSeg].base + desplazamiento, puntero, 4, "SS");
+
+            //Guardamos la cantidad de parametros en la pila
+            registros[SP] -= 4;
+            LeerPuntero(tabla_seg, registros[SP], &codSeg, &desplazamiento);
+            GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSeg].base + desplazamiento, cantParametros, 4, "SS");
+
         }
         else {
+            //Guardamos el puntero a la base de parametros en la pila (-1: Porque no hay parametros)
             registros[SP] -= 4;
             LeerPuntero(tabla_seg, registros[SP], &codSeg, &desplazamiento);
             GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSeg].base + desplazamiento, 0xFFFFFFFF, 4, "SS");
+
+            //Guardamos la cantidad de parametros en la pila (0)
             registros[SP] -= 4;
             LeerPuntero(tabla_seg, registros[SP], &codSeg, &desplazamiento);
             GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSeg].base + desplazamiento, 0, 4, "SS");
@@ -301,7 +311,6 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         }
 
         if(vmi){
-            printf("GIAN LUCA %s", argv[vmi]);
             ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
         }else{
             ejecutarPrograma(memoria, registros, tabla_seg, "", tamano); //No tiene vmi (ignoramos los BREAKPOINTS)
@@ -337,7 +346,7 @@ void LeerParametros(int8_t memoria[], int32_t registros[], Segmento tabla_seg[] 
                 *cantParametros += 1;
                 for(j=0; j<strlen(argv[i]); j++){ // usamos j<=strlen para asi se guarda el '\0'. //Vamos caracter a caracter guardando en memoria
                     tabla_seg[0].tamanio++;  //Se va aumentando el tamaño del Param Segment a medida que se agregan caracteres
-                    printf("%c", argv[i][j]); //print para ver cada letra que se va guardando
+                    //printf("%c", argv[i][j]); //print para ver cada letra que se va guardando
                     GuardarEnMemoria(memoria, registros, tabla_seg, base+j, (int8_t)argv[i][j], 1, "PS"); //Guardamos caracter por caracter (1 byte cada uno)
                     //printf("%c", memoria[j]);
                 }
@@ -708,7 +717,18 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
     fwrite(&tam_Kib, sizeof(uint16_t), 1, arch); // escribo el tamano de memoria en Kib
 
     fwrite(registros, sizeof(int32_t), 32, arch); // escribo los registros
-    fwrite(tabla_seg, sizeof(Segmento), 8, arch); // escribo la tabla de segmentos
+
+
+
+    //Escribo la tabla de segmentos
+    for(int i=0; i<NUM_SEG; i++){
+        fwrite(&(tabla_seg[i].base), sizeof(int16_t), 1, arch);
+        fwrite(&(tabla_seg[i].tamanio), sizeof(int16_t), 1, arch);
+    }
+
+
+
+    //fwrite(tabla_seg, sizeof(Segmento), 8, arch); // escribo la tabla de segmentos
 
     fwrite(memoria, sizeof(int8_t), tam_memoria, arch); // escribo la memoria
 
@@ -747,7 +767,21 @@ void leerImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], 
     *tam_mem = tam_Kib * 1024;
 
     fread(registros, sizeof(int32_t), 32, arch);
-    fread(tabla_seg, sizeof(Segmento), 8, arch);
+
+    for(int i=0; i<NUM_SEG; i++){
+        fread(&(tabla_seg[i].base), sizeof(int16_t), 1, arch);
+        fread(&(tabla_seg[i].tamanio), sizeof(int16_t), 1, arch);
+    }
+
+    char cod[3];
+
+    for(int j=26; j<32; j++){
+        if(registros[j]!=-1){
+            copiarRegistro(j, cod);
+            strcpy(tabla_seg[registros[j]>>16].cod, cod);
+        }
+    }
+
     fread(memoria, sizeof(int8_t), *tam_mem, arch);
 
     fclose(arch);
@@ -857,13 +891,17 @@ void breakpoint(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], cha
 
     char opcion;
 
+
+
     //Chequeamos que tenga VMI
     if(strcmp(filevmi, "")!=0){
         guardarImagenVmi(memoria, registros, tabla_seg, tamano, filevmi);
 
+        fflush(stdin);
         scanf("%c", &opcion);
 
         while(opcion!='g' && opcion!='q' && opcion!='\n'){
+            fflush(stdin);
             scanf("%c", &opcion);
         }
 
@@ -879,6 +917,9 @@ void breakpoint(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], cha
     }else{
         *bpoint=0;
     }
+
+
+
 }
 
 //------------------ EJECUCION ---------------------------------------
@@ -1028,7 +1069,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
                 registros[KS] = CrearPuntero(codSegmento, 0);
 
-                printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
+                //printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
 
                 codSegmento++;
             }
@@ -1050,7 +1091,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             tabla_seg[codSegmento].tamanio = tamCS;
             strcpy(tabla_seg[codSegmento].cod, "CS");
 
-            printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
+            //printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
 
             registros[CS] = CrearPuntero(codSegmento, 0);
             codSegmento++;
@@ -1064,8 +1105,8 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             registros[IP] = CrearPuntero(obtenerCodSegmento(tabla_seg, "CS"), entry_point); //registros[IP] = registros[CS] + entry_point;
             //registros[ip] = comienzo del code segment + entry point
 
-            printf("ENTRY POINT: %d\n", entry_point);
-            printf("REGISTROS IP: %d\n", registros[IP]);
+            //printf("ENTRY POINT: %d\n", entry_point);
+            //printf("REGISTROS IP: %d\n", registros[IP]);
 
             //-------------------------------------------------------------------------
 
@@ -1076,7 +1117,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                 tabla_seg[codSegmento].tamanio = tamDS;
                 strcpy(tabla_seg[codSegmento].cod, "DS");
 
-                printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
+                //printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
 
                 registros[DS] = CrearPuntero(codSegmento, 0);
                 codSegmento++;
@@ -1093,7 +1134,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
                 tabla_seg[codSegmento].tamanio = tamES;
                 strcpy(tabla_seg[codSegmento].cod, "ES");
 
-                printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
+                //printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
 
                 registros[ES] = CrearPuntero(codSegmento, 0);
                 codSegmento++;
@@ -1111,7 +1152,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
             tabla_seg[codSegmento].tamanio = tamSS;
             strcpy(tabla_seg[codSegmento].cod, "SS");
 
-            printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
+            //printf("COD: %s  |  %d\n", tabla_seg[codSegmento].cod, codSegmento);
 
             registros[SP] =  CrearPuntero(codSegmento, tabla_seg[codSegmento].tamanio);
 
@@ -1159,11 +1200,24 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 {
     int bpoint=0, i=0;
 
-    while (registros[IP] < tabla_seg[0].tamanio && registros[IP] != 0xFFFFFFFF)
-    {
-        printf("\nIP: %d", registros[IP]);
-        leerInstruccion(memoria, registros, tabla_seg, filevmi, tamano, &bpoint); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
+    int16_t codSeg = obtenerCodSegmento(tabla_seg, "CS");
 
+    int16_t desplazamiento;
+
+    int dirBaseCS = tabla_seg[codSeg].base;
+
+    int dirTamCS = dirBaseCS + tabla_seg[codSeg].tamanio;
+
+    int32_t dirIP;
+
+    LeerPuntero(tabla_seg, registros[IP], &codSeg, &desplazamiento);
+
+    dirIP = tabla_seg[codSeg].base + desplazamiento;
+
+    while (dirIP >= dirBaseCS && dirIP < dirTamCS && registros[IP] != 0xFFFFFFFF)
+    {
+        printf("\nIP: %d", registros[IP] & 0xFFFF);
+        leerInstruccion(memoria, registros, tabla_seg, filevmi, tamano, &bpoint); // manda a ejecutar la siguiente instruccion mientras este IP este dentro del code segment y IP tenga valor valido
 
         printf("\nEAX: ");
         printBits32(registros[EAX]);
@@ -1186,15 +1240,16 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
         printf("\nCC: ");
         printBits32(registros[CC]);
 
-        printf("\nIP: %d\n", registros[IP]);
+        printf("\nIP: %d\n", registros[IP] & 0xFFFF);
 
         printf("\n\n");
-
-
 
         if(bpoint==1){
             breakpoint(registros, memoria, tabla_seg, filevmi, tamano, &bpoint);
         }
+
+        LeerPuntero(tabla_seg, registros[IP], &codSeg, &desplazamiento);
+        dirIP = tabla_seg[codSeg].base + desplazamiento;
     }
 }
 
@@ -1217,7 +1272,16 @@ int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar
 
 void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano, int *bpoint) // Lee la siguiente instruccion separando el código de instrucción de sus operadores
 {
-    uint32_t ip = registros[IP];
+    int16_t codSegmento;
+    int16_t desplazamiento;
+
+    int32_t dirIP;
+
+    LeerPuntero(tabla_seg, registros[IP], &codSegmento, &desplazamiento);
+
+    dirIP = tabla_seg[codSegmento].base + desplazamiento;
+
+    uint32_t ip = dirIP;
     uint8_t byte_de_control = memoria[ip++];
     uint8_t tipo_opB, tipo_opA;
 
@@ -1239,7 +1303,7 @@ void leerInstruccion(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]
     if (tipo_opA != 0)
         registros[OP1] = registros[OP1] | (LeerOperando(memoria, &ip, tipo_opA, 0) & 0x00ffffff);
 
-    registros[IP] = ip;
+    registros[IP] = CrearPuntero(codSegmento, ip-tabla_seg[codSegmento].base);
 
     ejecutarInstruccion(memoria, registros, tabla_seg, filevmi, tamano, bpoint);
 }
@@ -2075,7 +2139,8 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
         break;
     case 0xF: // BREAKPOINT
         if(*bpoint==0){
-             *bpoint=1;
+            printf("Se activo el BREAKPOINT");
+            *bpoint=1;
         }
         break;
     default:
@@ -2204,14 +2269,14 @@ void Dissasembler(int8_t memoria[], int32_t registros[], Segmento tabla_seg[])
                 char temp[2] = {(char)memoria[i], '\0'};
                 strncat(palabra, temp, 1);
                 if(j<7){
-                    printf("[%02X]", memoria[i]);
+                    printf(" %02X", memoria[i]);
                 }
                 j++;
                 i++;
             }
 
             if(j<7){
-                printf(" [%02X]", '\0');
+                printf(" %02X", '\0');
             }else{
                 printf(" ..");
             }
