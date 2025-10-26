@@ -224,17 +224,19 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         vmx = 0;
         vmi = 1;
         i=2;
+    }else if(strstr(argv[1], ".vmx")!=NULL){
 
-    }else if(strstr(argv[2], ".vmi")!=NULL){
-        //Tenemos un .vmx y un .vmi
-        vmx = 1;
-        vmi = 2;
-        i=3;
-    }else{
-        //Cargamos el .vmx sólo
-        vmx = 1;
-        vmi = 0;
-        i=2;
+        if(argc<=2){
+            //Cargamos el .vmx sólo
+            vmx = 1;
+            vmi = 0;
+            i=2;
+        }else{
+            //Tenemos un .vmx y un .vmi
+                vmx = 1;
+                vmi = 2;
+                i=3;
+        }
     }
 
     tamano = TAMANIOMEMORIA; //Memoria por defecto cuando no hay un -m
@@ -306,11 +308,17 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
             GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSeg].base + desplazamiento, 0, 4, "SS");
         }
 
+        //Guardamos el -1 del RET del Main
+        registros[SP] -= 4;
+        LeerPuntero(tabla_seg, registros[SP], &codSeg, &desplazamiento);
+        GuardarEnMemoria(memoria, registros, tabla_seg, tabla_seg[codSeg].base + desplazamiento, -1, 4, "SS");
+
         if(d){
             Dissasembler(memoria, registros, tabla_seg);
         }
 
         if(vmi){
+
             ejecutarPrograma(memoria, registros, tabla_seg, argv[vmi], tamano); //Nos pasamos el nombre del archivo vmi para poder actualizarlo en caso de encontrar BREAKPOINTS
         }else{
             ejecutarPrograma(memoria, registros, tabla_seg, "", tamano); //No tiene vmi (ignoramos los BREAKPOINTS)
@@ -547,10 +555,11 @@ int32_t ExtenderSigno8Bits(int32_t valor)
 // obtenerValorOperando no se puede usar para el operando en el que hay que guardar los datos
 int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], int8_t memoria[], Segmento tabla_seg[])
 {
-    char codSeg[4];
     int cant;
     uint16_t dir_fis;
     int32_t resultado = 0;
+    int16_t codNumero;
+    int16_t desplazamiento;
 
     switch (tipo)
     {
@@ -582,8 +591,11 @@ int32_t obtenerValorOperando(int32_t valor, uint8_t tipo, int32_t registros[], i
     case TIPO_MEMORIA:
         dir_fis = ProcesarOPMemoria(valor, registros, tabla_seg); // la mascara a valor se aplica en la funcion
         cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
-        copiarRegistro(valor & 0x001F0000, codSeg);
-        resultado = LeerMemoria(memoria, registros, tabla_seg , dir_fis, cant, codSeg);
+
+        LeerPuntero(tabla_seg, registros[(valor & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+
+        resultado = LeerMemoria(memoria, registros, tabla_seg , dir_fis, cant, tabla_seg[codNumero].cod);
+
         break;
     default:
         resultado = 0;
@@ -730,7 +742,7 @@ void guardarImagenVmi(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
 
     fclose(arch);
 
-    printf("Se guardo exitosamente el VMI \n");
+    //printf("Se guardo exitosamente el VMI \n");
 }
 
 void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archivo[], int d) {
@@ -792,7 +804,7 @@ void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archiv
 
     fclose(arch);
 
-    printf("Se leyo exitosamente el VMI \n");
+    //printf("Se leyo exitosamente el VMI \n");
 
     if(d){
             Dissasembler(memoria, registros, tabla_seg);
@@ -842,12 +854,13 @@ void ret(int8_t memoria[], int32_t registros[], Segmento tabla_seg[]){
 
     int32_t aux = 0;
 
-    if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
+    LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
+
+    if (tabla_seg[codSegmentoSS].base + desplazamiento + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
         printf("Stack Underflow, no se pudo completar POP \n");
         exit(1);
     }
     else {
-        LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
         aux = LeerMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base + desplazamiento, 4, "SS");
         registros[IP]=aux;
         registros[SP]+=4;
@@ -902,8 +915,6 @@ void breakpoint(int32_t registros[], int8_t memoria[], Segmento tabla_seg[], cha
 
     char opcion;
 
-
-
     //Chequeamos que tenga VMI
     if(strcmp(filevmi, "")!=0){
         guardarImagenVmi(memoria, registros, tabla_seg, tamano, filevmi);
@@ -950,6 +961,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
     if (strcmp(id, "VMX25") != 0)
     {
         printf("ERROR: Mal identificador");
+        exit(1);
     }
     else
     {
@@ -958,6 +970,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
         if (!(ver == 1 || ver == 2))
         {
             printf("ERROR: Version erronea");
+            exit(1);
         }
         else if (ver == 1)
         {
@@ -1201,7 +1214,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
             //----------------------------------------------------------------
 
-            printf("Se leyo correctamente\n");
+            //printf("Se leyo correctamente\n");
         }
     }
     fclose(f);
@@ -1209,7 +1222,7 @@ void IniciarMaquinaVirtual(int32_t registros[], int8_t memoria[], Segmento tabla
 
 void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], char filevmi[], int tamano)
 {
-    int bpoint=0, i=0;
+    int bpoint=0;
 
     int16_t codSeg = obtenerCodSegmento(tabla_seg, "CS");
 
@@ -1233,9 +1246,13 @@ void ejecutarPrograma(int8_t memoria[], int32_t registros[], Segmento tabla_seg[
             breakpoint(registros, memoria, tabla_seg, filevmi, tamano, &bpoint);
         }
 
-        LeerPuntero(tabla_seg, registros[IP], &codSeg, &desplazamiento);
-        dirIP = tabla_seg[codSeg].base + desplazamiento;
+        if(registros[IP]!= -1){
+            LeerPuntero(tabla_seg, registros[IP], &codSeg, &desplazamiento);
+            dirIP = tabla_seg[codSeg].base + desplazamiento;
+        }
     }
+
+    printf("\nSE TERMINO LA EJECUCION\n");
 }
 
 int32_t LeerOperando(int8_t memoria[], uint32_t *ip, uint8_t tipoOP, int mostrar)
@@ -1467,33 +1484,29 @@ void pop(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int8_t tip
     int cant;
     int16_t codSegmentoSS = obtenerCodSegmento(tabla_seg, "SS");
     int16_t desplazamiento;
+    int32_t dirfis;
 
     int32_t aux = 0;
-    char seg[3];
 
-    if (registros[SP] + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
+    LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
+
+    if (tabla_seg[codSegmentoSS].base + desplazamiento + 4 > tabla_seg[codSegmentoSS].base + tabla_seg[codSegmentoSS].tamanio) {
         printf("Stack Underflow, no se pudo completar POP \n");
         exit(1);
     }
     else {
-        /*
-        for (i = 0 ; i < 4 ; i++)
-        {
-            aux |= memoria[registros[SP+i]];
-            aux = aux << (3 - i) * 8;
-        }
-        */
-
-        LeerPuntero(tabla_seg, registros[SP], &codSegmentoSS, &desplazamiento);
-
         aux = LeerMemoria(memoria, registros, tabla_seg, tabla_seg[codSegmentoSS].base + desplazamiento, 4, "SS");
 
         if (tipo == TIPO_REGISTRO)
             GuardarEnRegistro(registros, (valor & 0xFF), aux);
         else if (tipo == TIPO_MEMORIA) {
-            copiarRegistro((valor & 0x001F0000) >> 16, seg);
+
+            dirfis = ProcesarOPMemoria(valor, registros, tabla_seg);
+
+            LeerPuntero(tabla_seg, registros[(valor & 0x001F0000) >> 16], &codSegmentoSS, &desplazamiento);
+
             cant = 4 - (getBit(valor, 23) * 2 + getBit(valor, 22));
-            GuardarEnMemoria(memoria, registros, tabla_seg, valor, aux, cant, seg);
+            GuardarEnMemoria(memoria, registros, tabla_seg, dirfis, aux, cant, tabla_seg[codSegmentoSS].cod);
         }
         else {
             printf("ERROR: se quiso hacer pop a un inmediato o ninguno\n");
@@ -1535,7 +1548,6 @@ void mov(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
-    char codSeg[4];
     int cant;
     int16_t dir_fis;
     int32_t resultado = 0;
@@ -1551,10 +1563,12 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
     }
     else if (tipo_op1 == TIPO_MEMORIA)
     {
+
         dir_fis = ProcesarOPMemoria(valor1, registros, tabla_seg);
         resultado = obtenerValorOperando(valor1, tipo_op1, registros, memoria, tabla_seg) + valor2;
         cant = 4 - (getBit(valor1, 23) * 2 + getBit(valor1, 22));
         LeerPuntero(tabla_seg, registros[(valor1 & 0x001F0000) >> 16], &codNumero, &desplazamiento);
+
         GuardarEnMemoria(memoria, registros, tabla_seg, dir_fis, resultado, cant, tabla_seg[codNumero].cod);
     }
     else{
@@ -1567,7 +1581,6 @@ void add(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
-    char codSeg[4];
     int16_t dir_fis;
     int32_t resultado = 0;
     int16_t codNumero;
@@ -1597,7 +1610,6 @@ void sub(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void mul(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
-    char codSeg[4];
     int16_t dir_fis;
     int32_t resultado = 0;
     int16_t codNumero;
@@ -1631,7 +1643,6 @@ void dividir(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_
 {
     int16_t dir_fis;
     int32_t resultado, aux;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1683,7 +1694,6 @@ void shl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1714,7 +1724,6 @@ void shr(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int cant;
     uint32_t aux;
     int16_t codNumero;
@@ -1780,7 +1789,6 @@ void sar(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1811,7 +1819,6 @@ void and(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1842,7 +1849,6 @@ void or(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tip
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1874,7 +1880,6 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1903,7 +1908,7 @@ void xor(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 
 void swap(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
-    char codSeg1[4], codSeg2[4];
+    char codSeg1[4];
     int16_t dir_fis1, dir_fis2;
     int32_t aux1, aux2;
     int16_t codNumero1;
@@ -1957,7 +1962,6 @@ void ldl(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -1989,7 +1993,6 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -2024,7 +2027,6 @@ void ldh(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 void rnd(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t tipo_op2, uint8_t tipo_op1, int32_t valor2, int32_t valor1)
 {
     int16_t dir_fis;
-    char codSeg[4];
     int16_t codNumero;
     int16_t desplazamiento;
 
@@ -2103,25 +2105,29 @@ void write(int16_t dir_fis, int16_t cantidad, int16_t tamano, int32_t modo, int8
     }else {
         for (i = 0; i < cantidad; i++)
         {
-        valor = LeerMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, tamano, codSeg);
+            valor = LeerMemoria(memoria, registros, tabla_seg, dir_fis + i * tamano, tamano, codSeg);
 
-        printf("[%04X]: ", dir_fis + i * tamano);
-        if (getBit(modo, 0) == 1)
-            printf("0d %d ", valor);
-        if (getBit(modo, 1) == 1)
-            if (valor >= 32 && valor <= 126)
-                printf("Aa '%c' ", valor);
-            else
-                printf("Aa '.' ");
-        if (getBit(modo, 2) == 1)
-            printf("0o %o ", valor);
-        if (getBit(modo, 3) == 1)
-            printf("0x %X ", valor);
-        if (getBit(modo, 4) == 1){
-            printf("0b ");
-            printBits32(valor);
-        }
-        printf("\n");
+            printf("[%04X]: ", dir_fis + i * tamano);
+            if (getBit(modo, 0) == 1)
+                printf("0d %d ", valor);
+            if (getBit(modo, 1) == 1){
+                if (valor >= 32 && valor <= 126){
+                    printf("Aa '%c' ", valor);
+                }
+                else{
+                   printf("Aa '.' ");
+                }
+            }
+            if (getBit(modo, 2) == 1)
+                printf("0o %o ", valor);
+            if (getBit(modo, 3) == 1)
+                printf("0x %X ", valor);
+            if (getBit(modo, 4) == 1){
+                printf("0b ");
+                printBits32(valor);
+            }
+
+            printf("\n");
         }
     }
 }
@@ -2159,8 +2165,8 @@ void sys(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], int32_t va
         clearScreen();
         break;
     case 0xF: // BREAKPOINT
-        if(*bpoint==0){
-            printf("Se activo el BREAKPOINT");
+        if(*bpoint==0 && strcmp(filevmi, "")!=0){
+            //printf("Se activo el BREAKPOINT\n");
             *bpoint=1;
         }
         break;
@@ -2236,7 +2242,6 @@ void not(int8_t memoria[], int32_t registros[], Segmento tabla_seg[], uint8_t ti
 {
     int16_t dir_fis;
     int32_t resultado = 0;
-    char codSeg[4];
 
     int16_t codNumero;
     int16_t desplazamiento;
