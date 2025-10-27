@@ -226,17 +226,20 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
         i=2;
     }else if(strstr(argv[1], ".vmx")!=NULL){
 
-        if(argc<=2){
+        if(argc>2 && strstr(argv[2], ".vmi")!=NULL){
+             //Tenemos un .vmx y un .vmi
+                vmx = 1;
+                vmi = 2;
+                i=3;
+        }else{
             //Cargamos el .vmx sólo
             vmx = 1;
             vmi = 0;
             i=2;
-        }else{
-            //Tenemos un .vmx y un .vmi
-                vmx = 1;
-                vmi = 2;
-                i=3;
         }
+    }else{
+        printf("\nFIN DE EJECUCION: (No hay ningun archivo)\n");
+        exit(1);
     }
 
     tamano = TAMANIOMEMORIA; //Memoria por defecto cuando no hay un -m
