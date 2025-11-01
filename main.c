@@ -259,7 +259,7 @@ void InicializarMV(int32_t registros[], Segmento tabla_seg[], int argc, char * a
 
 
     //Se fija si hay un -d y si está entonces se ejecuta el Dissasembler.
-    if(i<argc && strcmp(argv[i], "-d")==0 && vmx){
+    if(i<argc && strcmp(argv[i], "-d")==0){
         //printf("%s: disasembler activado\n", argv[i]);
         d=1;
         i++;
@@ -810,7 +810,7 @@ void leerImagenVmi(int32_t registros[], Segmento tabla_seg[], char nombre_archiv
     //printf("Se leyo exitosamente el VMI \n");
 
     if(d){
-            Dissasembler(memoria, registros, tabla_seg);
+        Dissasembler(memoria, registros, tabla_seg);
     }
 
     ejecutarPrograma(memoria, registros, tabla_seg, nombre_archivo, tam_mem);
